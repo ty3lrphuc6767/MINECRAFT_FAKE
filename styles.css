@@ -231,6 +231,110 @@ button {
   line-height: 1;
 }
 
+#mobile-controls {
+  display: none;
+}
+
+#mobile-look {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 66px;
+  z-index: 1;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+#mobile-joystick {
+  position: absolute;
+  left: max(18px, env(safe-area-inset-left));
+  bottom: 86px;
+  z-index: 6;
+  width: 124px;
+  height: 124px;
+  border: 2px solid rgba(255, 255, 255, 0.22);
+  border-radius: 50%;
+  background: rgba(6, 10, 14, 0.34);
+  box-shadow: inset 0 0 24px rgba(255, 255, 255, 0.08), 0 8px 28px rgba(0, 0, 0, 0.24);
+  pointer-events: auto;
+  touch-action: none;
+}
+
+#mobile-stick {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 54px;
+  height: 54px;
+  border: 2px solid rgba(255, 255, 255, 0.28);
+  border-radius: 50%;
+  background: rgba(255, 212, 90, 0.78);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
+  transform: translate(-50%, -50%);
+}
+
+#mobile-actions {
+  position: absolute;
+  right: max(14px, env(safe-area-inset-right));
+  bottom: 78px;
+  z-index: 6;
+  display: grid;
+  grid-template-columns: repeat(3, 58px);
+  gap: 8px;
+  pointer-events: auto;
+}
+
+.mobile-btn {
+  width: 58px;
+  height: 58px;
+  border: 2px solid rgba(255, 255, 255, 0.24);
+  border-radius: 50%;
+  background: rgba(7, 10, 14, 0.72);
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 880;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.42);
+  backdrop-filter: blur(12px);
+  touch-action: none;
+}
+
+.mobile-btn.small {
+  width: 50px;
+  height: 50px;
+  justify-self: center;
+  font-size: 0.64rem;
+}
+
+.mobile-btn:active,
+.mobile-btn.active {
+  border-color: var(--accent);
+  background: rgba(255, 212, 90, 0.24);
+}
+
+body.mobile {
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+body.mobile.playing #mobile-controls {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  display: block;
+  pointer-events: none;
+}
+
+body.mobile #tips {
+  display: none;
+}
+
+body.mobile.playing #hotbar {
+  bottom: 10px;
+}
+
 .inventory {
   position: absolute;
   inset: 0;
@@ -367,5 +471,44 @@ body.inventory-open #crosshair {
 
   .block-name {
     font-size: 0.68rem;
+  }
+}
+
+@media (max-width: 760px), (pointer: coarse) {
+  .panel {
+    width: min(390px, calc(100vw - 24px));
+    padding: 20px;
+  }
+
+  #status span {
+    padding: 6px 8px;
+    font-size: 0.75rem;
+  }
+
+  #mobile-joystick {
+    width: 112px;
+    height: 112px;
+    bottom: 74px;
+  }
+
+  #mobile-stick {
+    width: 48px;
+    height: 48px;
+  }
+
+  #mobile-actions {
+    bottom: 68px;
+    grid-template-columns: repeat(3, 52px);
+    gap: 7px;
+  }
+
+  .mobile-btn {
+    width: 52px;
+    height: 52px;
+  }
+
+  .mobile-btn.small {
+    width: 46px;
+    height: 46px;
   }
 }
