@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>BlockCraft Survival</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <main id="app">
+      <canvas id="game" aria-label="BlockCraft Survival"></canvas>
+
+      <section id="start-screen" class="panel">
+        <h1>BlockCraft Survival</h1>
+        <p>Co san spawn phang, hang sau, ore duoi dat va void o cuc sau.</p>
+        <div class="panel-actions">
+          <button id="start-button" type="button">Bat dau</button>
+          <button id="fly-toggle" class="secondary-button hidden" type="button">Creative Fly: OFF</button>
+        </div>
+      </section>
+
+      <div id="hud">
+        <div id="status">
+          <span id="mode">Survival</span>
+          <span id="fps">0 FPS</span>
+          <span id="count">0 blocks</span>
+          <span id="selected">Grass</span>
+        </div>
+        <div id="tips">WASD di chuyen | Chuot nhin | Space nhay | Shift chay | E inventory | ESC menu | Click trai pha pha block | Click phai dat block</div>
+      </div>
+
+      <div id="crosshair" aria-hidden="true"></div>
+
+      <div id="hotbar" aria-label="Chon block"></div>
+
+      <section id="inventory" class="inventory hidden" aria-label="Inventory">
+        <div class="inventory-panel">
+          <div class="inventory-head">
+            <h2>Inventory</h2>
+            <button id="inventory-close" type="button">Dong</button>
+          </div>
+          <div id="inventory-grid"></div>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      (() => {
+        const startScreen = document.querySelector("#start-screen");
+        const startButton = document.querySelector("#start-button");
+        const version = "20260528-9";
+
+        function loadScript(src, done) {
+          const script = document.createElement("script");
+          script.src = src;
+          script.onload = () => done(true);
+          script.onerror = () => done(false);
+          document.head.appendChild(script);
+        }
+
+        function showError() {
+          startScreen.querySelector("p").textContent = "Khong tai duoc Three.js. Kiem tra mang hoac file vendor/three.min.js.";
+          startButton.disabled = true;
+          startButton.textContent = "Loi Three.js";
+        }
+
+        loadScript(`./vendor/three.min.js?v=${version}`, () => {
+          if (window.THREE) {
+            loadScript(`./app.js?v=${version}`, (ok) => {
+              if (!ok) showError();
+            });
+            return;
+          }
+
+          loadScript("https://unpkg.com/three@0.160.0/build/three.min.js", () => {
+            if (window.THREE) {
+              loadScript(`./app.js?v=${version}`, (ok) => {
+                if (!ok) showError();
+              });
+            }
+            else showError();
+          });
+        });
+      })();
+    </script>
+  </body>
+</html>
