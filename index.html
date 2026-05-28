@@ -26,12 +26,28 @@
           <span id="count">0 blocks</span>
           <span id="selected">Grass</span>
         </div>
-        <div id="tips">WASD di chuyen | Chuot nhin | Space nhay | Shift chay | E inventory | ESC menu | Click trai pha pha block | Click phai dat block</div>
+        <div id="tips">PC: WASD + chuot | Mobile: joystick + vuot nhin | E/inventory | ESC/menu | Pha/dat block</div>
       </div>
 
       <div id="crosshair" aria-hidden="true"></div>
 
       <div id="hotbar" aria-label="Chon block"></div>
+
+      <div id="mobile-controls" aria-label="Dieu khien mobile">
+        <div id="mobile-look" aria-hidden="true"></div>
+        <div id="mobile-joystick" aria-label="Di chuyen">
+          <div id="mobile-stick"></div>
+        </div>
+        <div id="mobile-actions">
+          <button class="mobile-btn small" data-mobile-action="pause" type="button">MENU</button>
+          <button class="mobile-btn small" data-mobile-action="inventory" type="button">INV</button>
+          <button class="mobile-btn small" data-mobile-action="sprint" type="button">RUN</button>
+          <button class="mobile-btn" data-mobile-action="break" type="button">PHA</button>
+          <button class="mobile-btn" data-mobile-action="place" type="button">DAT</button>
+          <button class="mobile-btn" data-mobile-action="jump" type="button">UP</button>
+          <button class="mobile-btn small" data-mobile-action="down" type="button">DOWN</button>
+        </div>
+      </div>
 
       <section id="inventory" class="inventory hidden" aria-label="Inventory">
         <div class="inventory-panel">
@@ -48,7 +64,7 @@
       (() => {
         const startScreen = document.querySelector("#start-screen");
         const startButton = document.querySelector("#start-button");
-        const version = "20260528-9";
+        const version = "20260528-10";
 
         function loadScript(src, done) {
           const script = document.createElement("script");
