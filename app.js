@@ -13,6 +13,10 @@
   let inventory = document.querySelector("#inventory");
   let inventoryGrid = document.querySelector("#inventory-grid");
   let inventoryClose = document.querySelector("#inventory-close");
+  let mobileControls = document.querySelector("#mobile-controls");
+  let mobileLook = document.querySelector("#mobile-look");
+  let mobileJoystick = document.querySelector("#mobile-joystick");
+  let mobileStick = document.querySelector("#mobile-stick");
   let slots = [];
   let inventoryButtons = [];
 
@@ -30,7 +34,7 @@
   const RENDER_DISTANCE = 3;
   const UNLOAD_DISTANCE = RENDER_DISTANCE + 1;
   const HOTBAR_SIZE = 9;
-  const WORLD_MIN_Y = -30;
+  const WORLD_MIN_Y = -42;
   const WORLD_MAX_Y = 44;
   const VOID_Y = -66;
   const SEA_LEVEL = 3;
@@ -51,6 +55,10 @@
   const SPAWN_PAD_Y = 8;
   const SPAWN_PAD_RADIUS = 9;
   const SPAWN_PAD_FADE = 16;
+  const MOBILE_LOOK_SPEED = 0.006;
+
+  let isMobile = isMobileDevice();
+  document.body.classList.toggle("mobile", isMobile);
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x86ceff);
@@ -58,7 +66,7 @@
 
   const camera = new THREE.PerspectiveCamera(65, 1, 0.05, 220);
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-  renderer.setPixelRatio(1);
+  renderer.setPixelRatio(isMobile ? 1 : Math.min(window.devicePixelRatio || 1, 2));
 
   const world = new THREE.Group();
   scene.add(world);
@@ -69,16 +77,8 @@
   scene.add(sun);
 
   const blockGeometry = new THREE.BoxGeometry(1, 1, 1);
-  const chunkMaterial = new THREE.MeshLambertMaterial({
-    vertexColors: true,
-    
-  });
-  const waterMaterial = new THREE.MeshLambertMaterial({
-    vertexColors: true,
-    transparent: true,
-    opacity: 0.62,
-    side: THREE.DoubleSide,
-  });
+  const chunkMaterial = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
+  const waterMaterial = new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true, opacity: 0.62, side: THREE.DoubleSide });
 
   const blockCatalog = [
     { type: "grass", name: "Grass", color: 0x4caf3d, swatch: "linear-gradient(#5eb83f 0 44%, #805025 44%)" },
@@ -141,10 +141,7 @@
   const blockBox = new THREE.Box3();
   const playerBox = new THREE.Box3();
 
-  const outline = new THREE.LineSegments(
-    new THREE.EdgesGeometry(blockGeometry),
-    new THREE.LineBasicMaterial({ color: 0xfff1b5 }),
-  );
+  const outline = new THREE.LineSegments(new THREE.EdgesGeometry(blockGeometry), new THREE.LineBasicMaterial({ color: 0xfff1b5 }));
   outline.scale.setScalar(1.012);
   outline.visible = false;
   scene.add(outline);
@@ -162,12 +159,20 @@
   let playing = false;
   let pointerLocked = false;
   let inventoryOpen = false;
+  let mobilePaused = false;
   let creativeFly = false;
   let ignoreMouseUntil = 0;
   let selectedSlot = 0;
   let selectedType = "grass";
   const hotbarItems = ["grass", "dirt", "stone", "sand", "wood", "planks", "leaves", "cobble", "brick"];
   let hovered = null;
+  let mobileMoveX = 0;
+  let mobileMoveY = 0;
+  let joystickPointerId = null;
+  let lookPointerId = null;
+  let lastLookX = 0;
+  let lastLookY = 0;
+  const mobileActions = { jump: false, down: false, sprint: false };
   let lastTime = performance.now();
   let frames = 0;
   let fpsTime = performance.now();
@@ -203,9 +208,7 @@
 
   document.addEventListener("mousemove", (event) => {
     if (!pointerLocked || inventoryOpen || performance.now() < ignoreMouseUntil) return;
-    player.yaw -= event.movementX * LOOK_SPEED;
-    player.pitch -= event.movementY * LOOK_SPEED;
-    player.pitch = THREE.MathUtils.clamp(player.pitch, -1.3, 1.3);
+    rotateView(event.movementX, event.movementY, LOOK_SPEED);
   });
 
   document.addEventListener("keydown", (event) => {
@@ -220,6 +223,12 @@
 
     if (event.code === "Escape" && inventoryOpen) {
       closeInventory(false);
+      event.preventDefault();
+      return;
+    }
+
+    if (event.code === "Escape" && hasStarted) {
+      pauseGame();
       event.preventDefault();
       return;
     }
@@ -254,6 +263,141 @@
 
   document.addEventListener("contextmenu", (event) => event.preventDefault());
   window.addEventListener("resize", resize);
+  setupMobileControls();
+
+  function setupMobileControls() {
+    mobileLook.addEventListener("pointerdown", (event) => {
+      if (!isMobile || inventoryOpen || !hasStarted || mobilePaused || event.pointerType === "mouse") return;
+      lookPointerId = event.pointerId;
+      lastLookX = event.clientX;
+      lastLookY = event.clientY;
+      mobileLook.setPointerCapture(event.pointerId);
+      event.preventDefault();
+    });
+
+    mobileLook.addEventListener("pointermove", (event) => {
+      if (event.pointerId !== lookPointerId || !playing) return;
+      const dx = event.clientX - lastLookX;
+      const dy = event.clientY - lastLookY;
+      lastLookX = event.clientX;
+      lastLookY = event.clientY;
+      rotateView(dx, dy, MOBILE_LOOK_SPEED);
+      event.preventDefault();
+    });
+
+    mobileLook.addEventListener("pointerup", stopMobileLook);
+    mobileLook.addEventListener("pointercancel", stopMobileLook);
+
+    mobileJoystick.addEventListener("pointerdown", (event) => {
+      if (!isMobile || inventoryOpen || !hasStarted || mobilePaused) return;
+      joystickPointerId = event.pointerId;
+      mobileJoystick.setPointerCapture(event.pointerId);
+      updateMobileJoystick(event);
+      event.preventDefault();
+    });
+
+    mobileJoystick.addEventListener("pointermove", (event) => {
+      if (event.pointerId !== joystickPointerId || !playing) return;
+      updateMobileJoystick(event);
+      event.preventDefault();
+    });
+
+    mobileJoystick.addEventListener("pointerup", stopMobileJoystick);
+    mobileJoystick.addEventListener("pointercancel", stopMobileJoystick);
+
+    mobileControls.querySelectorAll("[data-mobile-action]").forEach((button) => {
+      button.addEventListener("pointerdown", (event) => {
+        if (!isMobile || !hasStarted) return;
+        event.preventDefault();
+        event.stopPropagation();
+        button.setPointerCapture(event.pointerId);
+        handleMobileAction(button.dataset.mobileAction, true);
+        button.classList.add("active");
+      });
+
+      button.addEventListener("pointerup", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        handleMobileAction(button.dataset.mobileAction, false);
+        button.classList.remove("active");
+      });
+
+      button.addEventListener("pointercancel", () => {
+        handleMobileAction(button.dataset.mobileAction, false);
+        button.classList.remove("active");
+      });
+    });
+  }
+
+  function handleMobileAction(action, pressed) {
+    if (action === "jump") {
+      if (creativeFly) {
+        mobileActions.jump = pressed;
+      } else if (pressed && playing && player.grounded) {
+        player.velocity.y = JUMP_SPEED;
+        player.grounded = false;
+      }
+      return;
+    }
+
+    if (action === "down") {
+      mobileActions.down = pressed;
+      return;
+    }
+
+    if (action === "sprint") {
+      mobileActions.sprint = pressed;
+      return;
+    }
+
+    if (!pressed) return;
+
+    if (action === "break" && playing) removeHoveredBlock();
+    else if (action === "place" && playing) placeBlock();
+    else if (action === "inventory") openInventory();
+    else if (action === "pause") pauseGame();
+  }
+
+  function updateMobileJoystick(event) {
+    const rect = mobileJoystick.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    const radius = rect.width * 0.36;
+    const rawX = event.clientX - centerX;
+    const rawY = event.clientY - centerY;
+    const length = Math.hypot(rawX, rawY);
+    const scale = length > radius ? radius / length : 1;
+    const x = rawX * scale;
+    const y = rawY * scale;
+
+    mobileMoveX = x / radius;
+    mobileMoveY = y / radius;
+    mobileStick.style.transform = `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`;
+  }
+
+  function stopMobileJoystick(event) {
+    if (event.pointerId !== joystickPointerId) return;
+    joystickPointerId = null;
+    mobileMoveX = 0;
+    mobileMoveY = 0;
+    mobileStick.style.transform = "translate(-50%, -50%)";
+  }
+
+  function stopMobileLook(event) {
+    if (event.pointerId !== lookPointerId) return;
+    lookPointerId = null;
+  }
+
+  function resetMobileInput() {
+    mobileMoveX = 0;
+    mobileMoveY = 0;
+    joystickPointerId = null;
+    lookPointerId = null;
+    mobileActions.jump = false;
+    mobileActions.down = false;
+    mobileActions.sprint = false;
+    if (mobileStick) mobileStick.style.transform = "translate(-50%, -50%)";
+  }
 
   function ensureInventoryMarkup() {
     const app = document.querySelector("#app") || document.body;
@@ -286,6 +430,32 @@
       flyToggle.textContent = "Creative Fly: OFF";
       actions.append(flyToggle);
     }
+
+    if (!mobileControls) {
+      mobileControls = document.createElement("div");
+      mobileControls.id = "mobile-controls";
+      mobileControls.setAttribute("aria-label", "Dieu khien mobile");
+      mobileControls.innerHTML = `
+        <div id="mobile-look" aria-hidden="true"></div>
+        <div id="mobile-joystick" aria-label="Di chuyen">
+          <div id="mobile-stick"></div>
+        </div>
+        <div id="mobile-actions">
+          <button class="mobile-btn small" data-mobile-action="pause" type="button">MENU</button>
+          <button class="mobile-btn small" data-mobile-action="inventory" type="button">INV</button>
+          <button class="mobile-btn small" data-mobile-action="sprint" type="button">RUN</button>
+          <button class="mobile-btn" data-mobile-action="break" type="button">PHA</button>
+          <button class="mobile-btn" data-mobile-action="place" type="button">DAT</button>
+          <button class="mobile-btn" data-mobile-action="jump" type="button">UP</button>
+          <button class="mobile-btn small" data-mobile-action="down" type="button">DOWN</button>
+        </div>
+      `;
+      app.append(mobileControls);
+    }
+
+    mobileLook = mobileControls.querySelector("#mobile-look");
+    mobileJoystick = mobileControls.querySelector("#mobile-joystick");
+    mobileStick = mobileControls.querySelector("#mobile-stick");
 
     if (!selectedLabel && countLabel?.parentElement) {
       selectedLabel = document.createElement("span");
@@ -323,7 +493,8 @@
 
   function startPlaying() {
     hasStarted = true;
-    lockPointer();
+    mobilePaused = false;
+    if (!isMobile) lockPointer();
     syncUiState();
   }
 
@@ -343,14 +514,38 @@
   function closeInventory(tryLockPointer) {
     inventoryOpen = false;
     syncUiState();
-    if (tryLockPointer) lockPointer();
+    if (tryLockPointer && !isMobile) lockPointer();
+  }
+
+  function pauseGame() {
+    keys.clear();
+    resetMobileInput();
+
+    if (isMobile) {
+      mobilePaused = true;
+      syncUiState();
+      return;
+    }
+
+    if (document.pointerLockElement === canvas && document.exitPointerLock) {
+      document.exitPointerLock();
+    } else {
+      syncUiState();
+    }
+  }
+
+  function rotateView(dx, dy, speed) {
+    player.yaw -= dx * speed;
+    player.pitch -= dy * speed;
+    player.pitch = THREE.MathUtils.clamp(player.pitch, -1.3, 1.3);
   }
 
   function syncUiState() {
-    playing = pointerLocked && !inventoryOpen;
+    const activeView = isMobile ? hasStarted && !mobilePaused : pointerLocked;
+    playing = activeView && !inventoryOpen;
     modeLabel.textContent = inventoryOpen
       ? "Inventory"
-      : pointerLocked
+      : playing
         ? creativeFly ? "Creative Fly" : "Survival"
         : hasStarted ? "Paused" : "Survival";
 
@@ -365,9 +560,10 @@
     flyToggle.classList.toggle("active", creativeFly);
     flyToggle.classList.toggle("hidden", !hasStarted);
 
-    startScreen.classList.toggle("hidden", pointerLocked || inventoryOpen);
+    startScreen.classList.toggle("hidden", activeView || inventoryOpen);
     inventory.classList.toggle("hidden", !inventoryOpen);
     document.body.classList.toggle("inventory-open", inventoryOpen);
+    document.body.classList.toggle("playing", playing);
   }
 
   function updateChunkLoading(force = false, centerX = player.position.x, centerZ = player.position.z) {
@@ -377,21 +573,20 @@
 
     const centerChunkX = worldToChunk(centerX);
     const centerChunkZ = worldToChunk(centerZ);
+    const wanted = new Set();
 
     for (let dz = -RENDER_DISTANCE; dz <= RENDER_DISTANCE; dz += 1) {
       for (let dx = -RENDER_DISTANCE; dx <= RENDER_DISTANCE; dx += 1) {
         const chunkX = centerChunkX + dx;
         const chunkZ = centerChunkZ + dz;
         const key = chunkKey(chunkX, chunkZ);
+        wanted.add(key);
         if (!chunks.has(key)) loadChunk(chunkX, chunkZ);
       }
     }
 
     for (const [key, chunk] of chunks) {
-      if (
-        Math.abs(chunk.cx - centerChunkX) > UNLOAD_DISTANCE ||
-        Math.abs(chunk.cz - centerChunkZ) > UNLOAD_DISTANCE
-      ) {
+      if (Math.abs(chunk.cx - centerChunkX) > UNLOAD_DISTANCE || Math.abs(chunk.cz - centerChunkZ) > UNLOAD_DISTANCE) {
         unloadChunk(key, chunk);
       }
     }
@@ -406,9 +601,7 @@
     chunks.set(key, chunk);
     generateChunkBlocks(chunk);
 
-    for (const [blockKey, type] of chunk.blocks) {
-      blocks.set(blockKey, type);
-    }
+    for (const [blockKey, type] of chunk.blocks) blocks.set(blockKey, type);
 
     markChunkDirty(cx, cz);
     markChunkNeighborsDirty(cx, cz);
@@ -418,9 +611,7 @@
     removeChunkMesh(chunk, "mesh");
     removeChunkMesh(chunk, "waterMesh");
 
-    for (const blockKey of chunk.blocks.keys()) {
-      blocks.delete(blockKey);
-    }
+    for (const blockKey of chunk.blocks.keys()) blocks.delete(blockKey);
 
     chunks.delete(key);
     dirtyChunks.delete(key);
@@ -443,9 +634,7 @@
         }
 
         if (height < SEA_LEVEL) {
-          for (let y = height + 1; y <= SEA_LEVEL; y += 1) {
-            addGeneratedBlock(chunk, x, y, z, "water");
-          }
+          for (let y = height + 1; y <= SEA_LEVEL; y += 1) addGeneratedBlock(chunk, x, y, z, "water");
         }
       }
     }
@@ -485,9 +674,7 @@
   function addTreeToChunk(chunk, x, y, z) {
     const treeHeight = 4 + Math.floor(hash("tree-height", x, z) * 3);
 
-    for (let i = 0; i < treeHeight; i += 1) {
-      addGeneratedBlock(chunk, x, y + i, z, "wood");
-    }
+    for (let i = 0; i < treeHeight; i += 1) addGeneratedBlock(chunk, x, y + i, z, "wood");
 
     const topY = y + treeHeight - 1;
     for (let dx = -2; dx <= 2; dx += 1) {
@@ -499,9 +686,7 @@
 
           const key = keyFor(x + dx, leafY, z + dz);
           if (!isInsideChunk(chunk, x + dx, z + dz) || leafY < WORLD_MIN_Y || leafY > WORLD_MAX_Y) continue;
-          if (!chunk.blocks.has(key) || chunk.blocks.get(key) === "water") {
-            chunk.blocks.set(key, "leaves");
-          }
+          if (!chunk.blocks.has(key) || chunk.blocks.get(key) === "water") chunk.blocks.set(key, "leaves");
         }
       }
     }
@@ -703,7 +888,7 @@
     lastTime = now;
 
     updateChunkLoading(false);
-    rebuildDirtyChunks(1);
+    rebuildDirtyChunks(3);
     updateMovement(dt);
     updateCamera();
     updateTarget();
@@ -726,14 +911,18 @@
     if (keys.has("s") || keys.has("arrowdown")) move.sub(forward);
     if (keys.has("d") || keys.has("arrowright")) move.add(right);
     if (keys.has("a") || keys.has("arrowleft")) move.sub(right);
+    if (isMobile) {
+      move.addScaledVector(right, mobileMoveX);
+      move.addScaledVector(forward, -mobileMoveY);
+    }
     if (move.lengthSq() > 0) move.normalize();
 
-    const moveSpeed = creativeFly ? FLY_SPEED : keys.has("shift") ? SPRINT_SPEED : WALK_SPEED;
+    const moveSpeed = creativeFly ? FLY_SPEED : keys.has("shift") || mobileActions.sprint ? SPRINT_SPEED : WALK_SPEED;
     desiredVelocity.copy(move).multiplyScalar(moveSpeed);
 
     if (creativeFly) {
-      if (keys.has(" ")) desiredVelocity.y += FLY_VERTICAL_SPEED;
-      if (keys.has("control")) desiredVelocity.y -= FLY_VERTICAL_SPEED;
+      if (keys.has(" ") || mobileActions.jump) desiredVelocity.y += FLY_VERTICAL_SPEED;
+      if (keys.has("control") || mobileActions.down) desiredVelocity.y -= FLY_VERTICAL_SPEED;
 
       const flyBlend = 1 - Math.exp(-16 * dt);
       player.velocity.x = THREE.MathUtils.lerp(player.velocity.x, desiredVelocity.x, flyBlend);
@@ -816,9 +1005,7 @@
     let top = -Infinity;
     const samples = footSamples(x, z);
 
-    for (const sample of samples) {
-      top = Math.max(top, columnTop(sample.x, sample.z, maxTop));
-    }
+    for (const sample of samples) top = Math.max(top, columnTop(sample.x, sample.z, maxTop));
 
     return top;
   }
@@ -957,6 +1144,15 @@
   }
 
   function resize() {
+    const nextIsMobile = isMobileDevice();
+    if (nextIsMobile !== isMobile) {
+      isMobile = nextIsMobile;
+      document.body.classList.toggle("mobile", isMobile);
+      renderer.setPixelRatio(isMobile ? 1 : Math.min(window.devicePixelRatio || 1, 2));
+      resetMobileInput();
+      syncUiState();
+    }
+
     const width = window.innerWidth;
     const height = window.innerHeight;
     camera.aspect = width / height;
@@ -1166,5 +1362,9 @@
     for (let i = 0; i < text.length; i += 1) value += text.charCodeAt(i) * (i + 17);
     const raw = Math.sin(value * 9.161 + a * 78.233 + b * 37.719 + c * 19.371) * 43758.5453;
     return raw - Math.floor(raw);
+  }
+
+  function isMobileDevice() {
+    return window.matchMedia("(pointer: coarse)").matches || navigator.maxTouchPoints > 0 || window.innerWidth <= 760;
   }
 })();
