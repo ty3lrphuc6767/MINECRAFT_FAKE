@@ -16,6 +16,7 @@
         <div class="panel-actions">
           <button id="start-button" type="button">Bat dau</button>
           <button id="fly-toggle" class="secondary-button hidden" type="button">Creative Fly: OFF</button>
+          <button id="touch-toggle" class="secondary-button" type="button">Touch Mode: AUTO</button>
         </div>
       </section>
 
@@ -26,7 +27,7 @@
           <span id="count">0 blocks</span>
           <span id="selected">Grass</span>
         </div>
-        <div id="tips">PC: WASD + chuot | Mobile: joystick + vuot nhin | E/inventory | ESC/menu | Pha/dat block</div>
+        <div id="tips">PC: WASD + chuot | Mobile/Xiaomi Pad: bam Touch Mode neu no hien PC | Joystick + vuot nhin | Pha/dat block</div>
       </div>
 
       <div id="crosshair" aria-hidden="true"></div>
@@ -64,7 +65,7 @@
       (() => {
         const startScreen = document.querySelector("#start-screen");
         const startButton = document.querySelector("#start-button");
-        const version = "20260528-10";
+        const version = "20260529-1";
 
         function loadScript(src, done) {
           const script = document.createElement("script");
