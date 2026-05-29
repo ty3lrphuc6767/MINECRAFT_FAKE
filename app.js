@@ -57,7 +57,7 @@
   const PLAYER_RADIUS = 0.35;
   const STEP_HEIGHT = 1.05;
   const GRAVITY = 22;
-  const JUMP_SPEED = 15;
+  const JUMP_SPEED = 10;
   const SPAWN_X = 0;
   const SPAWN_Z = 10;
   const SPAWN_PAD_Y = 8;
