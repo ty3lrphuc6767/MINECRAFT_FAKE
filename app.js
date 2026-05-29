@@ -32,10 +32,17 @@
 
   const THREE = window.THREE;
   const CHUNK_SIZE = 16;
-  const RENDER_DISTANCE = 3;
-  const UNLOAD_DISTANCE = RENDER_DISTANCE + 1;
+  const DESKTOP_RENDER_DISTANCE = 2;
+  const MOBILE_RENDER_DISTANCE = 2;
+  const LOW_FPS_RENDER_DISTANCE = 1;
+  const DESKTOP_CHUNK_LOAD_BUDGET = 2;
+  const MOBILE_CHUNK_LOAD_BUDGET = 1;
+  const DESKTOP_CHUNK_REBUILD_BUDGET = 1;
+  const MOBILE_CHUNK_REBUILD_BUDGET = 1;
+  const LOW_FPS_LIMIT = 28;
+  const RECOVER_FPS_LIMIT = 50;
   const HOTBAR_SIZE = 9;
-  const WORLD_MIN_Y = -26;
+  const WORLD_MIN_Y = -42;
   const WORLD_MAX_Y = 44;
   const VOID_Y = -66;
   const SEA_LEVEL = 3;
@@ -43,14 +50,14 @@
   const LOOK_SPEED = 0.0022;
   const WALK_SPEED = 5.2;
   const SPRINT_SPEED = 7.4;
-  const FLY_SPEED = 8.8;
+  const FLY_SPEED = 10.6;
   const FLY_VERTICAL_SPEED = 7.6;
   const PLAYER_HEIGHT = 2;
   const EYE_HEIGHT = 1.72;
   const PLAYER_RADIUS = 0.35;
   const STEP_HEIGHT = 1.05;
   const GRAVITY = 22;
-  const JUMP_SPEED = 8;
+  const JUMP_SPEED = 10;
   const SPAWN_X = 0;
   const SPAWN_Z = 10;
   const SPAWN_PAD_Y = 8;
@@ -60,16 +67,23 @@
 
   let forcedMobile = getSavedTouchMode() || getUrlTouchMode();
   let isMobile = isMobileDevice();
+  let renderDistance = isMobile ? MOBILE_RENDER_DISTANCE : DESKTOP_RENDER_DISTANCE;
+  let unloadDistance = renderDistance + 1;
+  let qualityScale = isMobile ? 0.85 : 1;
   document.body.classList.toggle("mobile", isMobile);
   document.body.classList.toggle("touch-forced", forcedMobile);
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x86ceff);
-  scene.fog = new THREE.Fog(0x86ceff, 55, 145);
+  scene.fog = new THREE.Fog(0x86ceff, 42, fogFarForDistance());
 
   const camera = new THREE.PerspectiveCamera(65, 1, 0.05, 220);
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-  renderer.setPixelRatio(isMobile ? 1 : Math.min(window.devicePixelRatio || 1, 2));
+  const renderer = new THREE.WebGLRenderer({
+    canvas,
+    antialias: false,
+    powerPreference: "high-performance",
+  });
+  renderer.setPixelRatio(pixelRatioForQuality());
 
   const world = new THREE.Group();
   scene.add(world);
@@ -249,6 +263,9 @@
   let frames = 0;
   let fpsTime = performance.now();
   let chunkCheckTime = 0;
+  let targetCheckTime = 0;
+  let lowFpsTicks = 0;
+  let highFpsTicks = 0;
 
   renderHotbar();
   renderInventory();
@@ -670,27 +687,34 @@
 
   function updateChunkLoading(force = false, centerX = player.position.x, centerZ = player.position.z) {
     const now = performance.now();
-    if (!force && now - chunkCheckTime < 180) return;
+    if (!force && now - chunkCheckTime < (isMobile ? 260 : 180)) return;
     chunkCheckTime = now;
 
     const centerChunkX = worldToChunk(centerX);
     const centerChunkZ = worldToChunk(centerZ);
     const wanted = new Set();
+    const toLoad = [];
 
-    for (let dz = -RENDER_DISTANCE; dz <= RENDER_DISTANCE; dz += 1) {
-      for (let dx = -RENDER_DISTANCE; dx <= RENDER_DISTANCE; dx += 1) {
+    for (let dz = -renderDistance; dz <= renderDistance; dz += 1) {
+      for (let dx = -renderDistance; dx <= renderDistance; dx += 1) {
         const chunkX = centerChunkX + dx;
         const chunkZ = centerChunkZ + dz;
         const key = chunkKey(chunkX, chunkZ);
         wanted.add(key);
-        if (!chunks.has(key)) loadChunk(chunkX, chunkZ);
+        if (!chunks.has(key)) toLoad.push({ chunkX, chunkZ, distance: dx * dx + dz * dz });
       }
+    }
+
+    toLoad.sort((a, b) => a.distance - b.distance);
+    const loadLimit = force ? 9999 : isMobile ? MOBILE_CHUNK_LOAD_BUDGET : DESKTOP_CHUNK_LOAD_BUDGET;
+    for (let i = 0; i < Math.min(loadLimit, toLoad.length); i += 1) {
+      loadChunk(toLoad[i].chunkX, toLoad[i].chunkZ);
     }
 
     for (const [key, chunk] of chunks) {
       if (
-        Math.abs(chunk.cx - centerChunkX) > UNLOAD_DISTANCE ||
-        Math.abs(chunk.cz - centerChunkZ) > UNLOAD_DISTANCE
+        Math.abs(chunk.cx - centerChunkX) > unloadDistance ||
+        Math.abs(chunk.cz - centerChunkZ) > unloadDistance
       ) {
         unloadChunk(key, chunk);
       }
@@ -1005,10 +1029,12 @@
   }
 
   function removeHoveredBlock() {
+    updateTarget(performance.now(), true);
     if (hovered) removeBlock(hovered.key);
   }
 
   function placeBlock() {
+    updateTarget(performance.now(), true);
     if (!hovered) return;
 
     placeNormal.set(hovered.normal.x, hovered.normal.y, hovered.normal.z);
@@ -1025,10 +1051,10 @@
     lastTime = now;
 
     updateChunkLoading(false);
-    rebuildDirtyChunks(1);
+    rebuildDirtyChunks(isMobile ? MOBILE_CHUNK_REBUILD_BUDGET : DESKTOP_CHUNK_REBUILD_BUDGET);
     updateMovement(dt);
     updateCamera();
-    updateTarget();
+    updateTarget(now);
     renderer.render(scene, camera);
     updateFps(now);
     requestAnimationFrame(loop);
@@ -1247,7 +1273,10 @@
     camera.lookAt(lookTarget);
   }
 
-  function updateTarget() {
+  function updateTarget(now = performance.now(), force = false) {
+    if (!force && now - targetCheckTime < (isMobile ? 80 : 45)) return;
+    targetCheckTime = now;
+
     raycaster.set(camera.position, cameraDir);
     raycaster.far = REACH;
 
@@ -1272,14 +1301,16 @@
   function updateFps(now) {
     frames += 1;
     if (now - fpsTime >= 500) {
-      fpsLabel.textContent = `${Math.round((frames * 1000) / (now - fpsTime))} FPS`;
+      const fps = Math.round((frames * 1000) / (now - fpsTime));
+      fpsLabel.textContent = `${fps} FPS`;
+      tuneQuality(fps);
       fpsTime = now;
       frames = 0;
     }
   }
 
   function updateHud() {
-    countLabel.textContent = `${chunks.size} chunks / ${blocks.size} blocks`;
+    countLabel.textContent = `${chunks.size} chunks / ${blocks.size} blocks | RD ${renderDistance}`;
   }
 
   function resize() {
@@ -1287,7 +1318,9 @@
     if (nextIsMobile !== isMobile) {
       isMobile = nextIsMobile;
       document.body.classList.toggle("mobile", isMobile);
-      renderer.setPixelRatio(isMobile ? 1 : Math.min(window.devicePixelRatio || 1, 2));
+      setRenderDistance(isMobile ? MOBILE_RENDER_DISTANCE : DESKTOP_RENDER_DISTANCE);
+      qualityScale = isMobile ? Math.min(qualityScale, 0.85) : 1;
+      renderer.setPixelRatio(pixelRatioForQuality());
       resetMobileInput();
       syncUiState();
     }
@@ -1299,6 +1332,61 @@
     renderer.setSize(width, height, false);
   }
 
+  function tuneQuality(fps) {
+    if (fps < LOW_FPS_LIMIT) {
+      lowFpsTicks += 1;
+      highFpsTicks = 0;
+    } else if (fps > RECOVER_FPS_LIMIT) {
+      highFpsTicks += 1;
+      lowFpsTicks = 0;
+    } else {
+      lowFpsTicks = 0;
+      highFpsTicks = 0;
+    }
+
+    if (lowFpsTicks >= 5) {
+      lowFpsTicks = 0;
+      qualityScale = Math.max(0.65, qualityScale - 0.1);
+      renderer.setPixelRatio(pixelRatioForQuality());
+      if (!isMobile) setRenderDistance(LOW_FPS_RENDER_DISTANCE);
+      return;
+    }
+
+    if (!isMobile && highFpsTicks >= 10 && qualityScale < 1) {
+      highFpsTicks = 0;
+      qualityScale = Math.min(1, qualityScale + 0.1);
+      renderer.setPixelRatio(pixelRatioForQuality());
+      if (qualityScale >= 0.95) setRenderDistance(DESKTOP_RENDER_DISTANCE);
+    }
+  }
+
+  function setRenderDistance(nextDistance) {
+    const distance = Math.max(1, Math.round(nextDistance));
+    if (distance === renderDistance) return;
+    renderDistance = distance;
+    unloadDistance = renderDistance + 1;
+    updateViewDistance();
+    updateChunkLoading(true);
+  }
+
+  function updateViewDistance() {
+    camera.far = Math.max(100, renderDistance * CHUNK_SIZE * 3.5);
+    camera.updateProjectionMatrix();
+    scene.fog.near = renderDistance * CHUNK_SIZE * 0.7;
+    scene.fog.far = fogFarForDistance();
+    updateHud();
+  }
+
+  function fogFarForDistance() {
+    return Math.max(90, renderDistance * CHUNK_SIZE * 2.35);
+  }
+
+  function pixelRatioForQuality() {
+    const deviceRatio = window.devicePixelRatio || 1;
+    const cap = isMobile ? 1 : Math.min(deviceRatio, 1.5);
+    return Math.max(0.6, cap * qualityScale);
+  }
+
   function setForcedMobile(enabled) {
     forcedMobile = enabled;
     saveTouchMode(enabled);
@@ -1308,7 +1396,9 @@
     if (nextIsMobile !== isMobile) {
       isMobile = nextIsMobile;
       document.body.classList.toggle("mobile", isMobile);
-      renderer.setPixelRatio(isMobile ? 1 : Math.min(window.devicePixelRatio || 1, 2));
+      setRenderDistance(isMobile ? MOBILE_RENDER_DISTANCE : DESKTOP_RENDER_DISTANCE);
+      qualityScale = isMobile ? Math.min(qualityScale, 0.85) : 1;
+      renderer.setPixelRatio(pixelRatioForQuality());
       resetMobileInput();
 
       if (isMobile && document.pointerLockElement === canvas && document.exitPointerLock) {
