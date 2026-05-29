@@ -5,6 +5,7 @@
   let startTitle = startScreen.querySelector("h1");
   let startCopy = startScreen.querySelector("p");
   let flyToggle = document.querySelector("#fly-toggle");
+  let touchToggle = document.querySelector("#touch-toggle");
   const fpsLabel = document.querySelector("#fps");
   const countLabel = document.querySelector("#count");
   const modeLabel = document.querySelector("#mode");
@@ -34,7 +35,7 @@
   const RENDER_DISTANCE = 3;
   const UNLOAD_DISTANCE = RENDER_DISTANCE + 1;
   const HOTBAR_SIZE = 9;
-  const WORLD_MIN_Y = -42;
+  const WORLD_MIN_Y = -26;
   const WORLD_MAX_Y = 44;
   const VOID_Y = -66;
   const SEA_LEVEL = 3;
@@ -57,8 +58,10 @@
   const SPAWN_PAD_FADE = 16;
   const MOBILE_LOOK_SPEED = 0.006;
 
+  let forcedMobile = getSavedTouchMode() || getUrlTouchMode();
   let isMobile = isMobileDevice();
   document.body.classList.toggle("mobile", isMobile);
+  document.body.classList.toggle("touch-forced", forcedMobile);
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x86ceff);
@@ -77,8 +80,16 @@
   scene.add(sun);
 
   const blockGeometry = new THREE.BoxGeometry(1, 1, 1);
-  const chunkMaterial = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
-  const waterMaterial = new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true, opacity: 0.62, side: THREE.DoubleSide });
+  const chunkMaterial = new THREE.MeshLambertMaterial({
+    vertexColors: true,
+    
+  });
+  const waterMaterial = new THREE.MeshLambertMaterial({
+    vertexColors: true,
+    transparent: true,
+    opacity: 0.62,
+    
+  });
 
   const blockCatalog = [
     { type: "grass", name: "Grass", color: 0x4caf3d, swatch: "linear-gradient(#5eb83f 0 44%, #805025 44%)" },
@@ -116,12 +127,66 @@
   const blockColors = Object.fromEntries(blockCatalog.map((block) => [block.type, new THREE.Color(block.color)]));
 
   const faceDefs = [
-    { normal: [1, 0, 0], corners: [[0.5, -0.5, -0.5], [0.5, 0.5, -0.5], [0.5, 0.5, 0.5], [0.5, -0.5, 0.5]], shade: 0.82 },
-    { normal: [-1, 0, 0], corners: [[-0.5, -0.5, 0.5], [-0.5, 0.5, 0.5], [-0.5, 0.5, -0.5], [-0.5, -0.5, -0.5]], shade: 0.72 },
-    { normal: [0, 1, 0], corners: [[-0.5, 0.5, 0.5], [0.5, 0.5, 0.5], [0.5, 0.5, -0.5], [-0.5, 0.5, -0.5]], shade: 1 },
-    { normal: [0, -1, 0], corners: [[-0.5, -0.5, -0.5], [0.5, -0.5, -0.5], [0.5, -0.5, 0.5], [-0.5, -0.5, 0.5]], shade: 0.58 },
-    { normal: [0, 0, 1], corners: [[-0.5, -0.5, 0.5], [0.5, -0.5, 0.5], [0.5, 0.5, 0.5], [-0.5, 0.5, 0.5]], shade: 0.9 },
-    { normal: [0, 0, -1], corners: [[0.5, -0.5, -0.5], [-0.5, -0.5, -0.5], [-0.5, 0.5, -0.5], [0.5, 0.5, -0.5]], shade: 0.66 },
+    {
+      normal: [1, 0, 0],
+      corners: [
+        [0.5, -0.5, -0.5],
+        [0.5, 0.5, -0.5],
+        [0.5, 0.5, 0.5],
+        [0.5, -0.5, 0.5],
+      ],
+      shade: 0.82,
+    },
+    {
+      normal: [-1, 0, 0],
+      corners: [
+        [-0.5, -0.5, 0.5],
+        [-0.5, 0.5, 0.5],
+        [-0.5, 0.5, -0.5],
+        [-0.5, -0.5, -0.5],
+      ],
+      shade: 0.72,
+    },
+    {
+      normal: [0, 1, 0],
+      corners: [
+        [-0.5, 0.5, 0.5],
+        [0.5, 0.5, 0.5],
+        [0.5, 0.5, -0.5],
+        [-0.5, 0.5, -0.5],
+      ],
+      shade: 1,
+    },
+    {
+      normal: [0, -1, 0],
+      corners: [
+        [-0.5, -0.5, -0.5],
+        [0.5, -0.5, -0.5],
+        [0.5, -0.5, 0.5],
+        [-0.5, -0.5, 0.5],
+      ],
+      shade: 0.58,
+    },
+    {
+      normal: [0, 0, 1],
+      corners: [
+        [-0.5, -0.5, 0.5],
+        [0.5, -0.5, 0.5],
+        [0.5, 0.5, 0.5],
+        [-0.5, 0.5, 0.5],
+      ],
+      shade: 0.9,
+    },
+    {
+      normal: [0, 0, -1],
+      corners: [
+        [0.5, -0.5, -0.5],
+        [-0.5, -0.5, -0.5],
+        [-0.5, 0.5, -0.5],
+        [0.5, 0.5, -0.5],
+      ],
+      shade: 0.66,
+    },
   ];
 
   const chunks = new Map();
@@ -141,7 +206,10 @@
   const blockBox = new THREE.Box3();
   const playerBox = new THREE.Box3();
 
-  const outline = new THREE.LineSegments(new THREE.EdgesGeometry(blockGeometry), new THREE.LineBasicMaterial({ color: 0xfff1b5 }));
+  const outline = new THREE.LineSegments(
+    new THREE.EdgesGeometry(blockGeometry),
+    new THREE.LineBasicMaterial({ color: 0xfff1b5 }),
+  );
   outline.scale.setScalar(1.012);
   outline.visible = false;
   scene.add(outline);
@@ -172,7 +240,11 @@
   let lookPointerId = null;
   let lastLookX = 0;
   let lastLookY = 0;
-  const mobileActions = { jump: false, down: false, sprint: false };
+  const mobileActions = {
+    jump: false,
+    down: false,
+    sprint: false,
+  };
   let lastTime = performance.now();
   let frames = 0;
   let fpsTime = performance.now();
@@ -198,6 +270,12 @@
     creativeFly = !creativeFly;
     syncUiState();
   });
+  if (touchToggle) {
+    touchToggle.addEventListener("click", (event) => {
+      event.stopPropagation();
+      setForcedMobile(!forcedMobile);
+    });
+  }
   inventoryClose.addEventListener("click", () => closeInventory(true));
 
   document.addEventListener("pointerlockchange", () => {
@@ -431,6 +509,24 @@
       actions.append(flyToggle);
     }
 
+    if (!touchToggle) {
+      let actions = startScreen.querySelector(".panel-actions");
+      if (!actions) {
+        actions = document.createElement("div");
+        actions.className = "panel-actions";
+        startButton.before(actions);
+        actions.append(startButton);
+        if (flyToggle) actions.append(flyToggle);
+      }
+
+      touchToggle = document.createElement("button");
+      touchToggle.id = "touch-toggle";
+      touchToggle.className = "secondary-button";
+      touchToggle.type = "button";
+      touchToggle.textContent = "Touch Mode: AUTO";
+      actions.append(touchToggle);
+    }
+
     if (!mobileControls) {
       mobileControls = document.createElement("div");
       mobileControls.id = "mobile-controls";
@@ -559,6 +655,12 @@
     flyToggle.textContent = creativeFly ? "Creative Fly: ON" : "Creative Fly: OFF";
     flyToggle.classList.toggle("active", creativeFly);
     flyToggle.classList.toggle("hidden", !hasStarted);
+    if (touchToggle) {
+      touchToggle.textContent = forcedMobile
+        ? "Touch Mode: ON"
+        : isMobile ? "Touch Mode: AUTO" : "Touch Mode: OFF";
+      touchToggle.classList.toggle("active", isMobile);
+    }
 
     startScreen.classList.toggle("hidden", activeView || inventoryOpen);
     inventory.classList.toggle("hidden", !inventoryOpen);
@@ -586,7 +688,10 @@
     }
 
     for (const [key, chunk] of chunks) {
-      if (Math.abs(chunk.cx - centerChunkX) > UNLOAD_DISTANCE || Math.abs(chunk.cz - centerChunkZ) > UNLOAD_DISTANCE) {
+      if (
+        Math.abs(chunk.cx - centerChunkX) > UNLOAD_DISTANCE ||
+        Math.abs(chunk.cz - centerChunkZ) > UNLOAD_DISTANCE
+      ) {
         unloadChunk(key, chunk);
       }
     }
@@ -596,12 +701,21 @@
 
   function loadChunk(cx, cz) {
     const key = chunkKey(cx, cz);
-    const chunk = { key, cx, cz, blocks: new Map(), mesh: null, waterMesh: null };
+    const chunk = {
+      key,
+      cx,
+      cz,
+      blocks: new Map(),
+      mesh: null,
+      waterMesh: null,
+    };
 
     chunks.set(key, chunk);
     generateChunkBlocks(chunk);
 
-    for (const [blockKey, type] of chunk.blocks) blocks.set(blockKey, type);
+    for (const [blockKey, type] of chunk.blocks) {
+      blocks.set(blockKey, type);
+    }
 
     markChunkDirty(cx, cz);
     markChunkNeighborsDirty(cx, cz);
@@ -611,7 +725,9 @@
     removeChunkMesh(chunk, "mesh");
     removeChunkMesh(chunk, "waterMesh");
 
-    for (const blockKey of chunk.blocks.keys()) blocks.delete(blockKey);
+    for (const blockKey of chunk.blocks.keys()) {
+      blocks.delete(blockKey);
+    }
 
     chunks.delete(key);
     dirtyChunks.delete(key);
@@ -634,7 +750,9 @@
         }
 
         if (height < SEA_LEVEL) {
-          for (let y = height + 1; y <= SEA_LEVEL; y += 1) addGeneratedBlock(chunk, x, y, z, "water");
+          for (let y = height + 1; y <= SEA_LEVEL; y += 1) {
+            addGeneratedBlock(chunk, x, y, z, "water");
+          }
         }
       }
     }
@@ -674,7 +792,9 @@
   function addTreeToChunk(chunk, x, y, z) {
     const treeHeight = 4 + Math.floor(hash("tree-height", x, z) * 3);
 
-    for (let i = 0; i < treeHeight; i += 1) addGeneratedBlock(chunk, x, y + i, z, "wood");
+    for (let i = 0; i < treeHeight; i += 1) {
+      addGeneratedBlock(chunk, x, y + i, z, "wood");
+    }
 
     const topY = y + treeHeight - 1;
     for (let dx = -2; dx <= 2; dx += 1) {
@@ -686,7 +806,9 @@
 
           const key = keyFor(x + dx, leafY, z + dz);
           if (!isInsideChunk(chunk, x + dx, z + dz) || leafY < WORLD_MIN_Y || leafY > WORLD_MAX_Y) continue;
-          if (!chunk.blocks.has(key) || chunk.blocks.get(key) === "water") chunk.blocks.set(key, "leaves");
+          if (!chunk.blocks.has(key) || chunk.blocks.get(key) === "water") {
+            chunk.blocks.set(key, "leaves");
+          }
         }
       }
     }
@@ -772,14 +894,29 @@
   }
 
   function createGeometryStore() {
-    return { positions: [], normals: [], colors: [], faceBlocks: [] };
+    return {
+      positions: [],
+      normals: [],
+      colors: [],
+      faceBlocks: [],
+    };
   }
 
   function appendFace(store, x, y, z, type, face) {
     const color = blockColors[type] || blockColors.grass;
     const indices = [0, 1, 2, 0, 2, 3];
-    const normalInfo = { x: face.normal[0], y: face.normal[1], z: face.normal[2] };
-    const faceInfo = { key: keyFor(x, y, z), x, y, z, normal: normalInfo };
+    const normalInfo = {
+      x: face.normal[0],
+      y: face.normal[1],
+      z: face.normal[2],
+    };
+    const faceInfo = {
+      key: keyFor(x, y, z),
+      x,
+      y,
+      z,
+      normal: normalInfo,
+    };
 
     for (const index of indices) {
       const corner = face.corners[index];
@@ -888,7 +1025,7 @@
     lastTime = now;
 
     updateChunkLoading(false);
-    rebuildDirtyChunks(3);
+    rebuildDirtyChunks(1);
     updateMovement(dt);
     updateCamera();
     updateTarget();
@@ -1005,7 +1142,9 @@
     let top = -Infinity;
     const samples = footSamples(x, z);
 
-    for (const sample of samples) top = Math.max(top, columnTop(sample.x, sample.z, maxTop));
+    for (const sample of samples) {
+      top = Math.max(top, columnTop(sample.x, sample.z, maxTop));
+    }
 
     return top;
   }
@@ -1158,6 +1297,27 @@
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
     renderer.setSize(width, height, false);
+  }
+
+  function setForcedMobile(enabled) {
+    forcedMobile = enabled;
+    saveTouchMode(enabled);
+    document.body.classList.toggle("touch-forced", forcedMobile);
+
+    const nextIsMobile = isMobileDevice();
+    if (nextIsMobile !== isMobile) {
+      isMobile = nextIsMobile;
+      document.body.classList.toggle("mobile", isMobile);
+      renderer.setPixelRatio(isMobile ? 1 : Math.min(window.devicePixelRatio || 1, 2));
+      resetMobileInput();
+
+      if (isMobile && document.pointerLockElement === canvas && document.exitPointerLock) {
+        document.exitPointerLock();
+      }
+    }
+
+    syncUiState();
+    resize();
   }
 
   function renderHotbar() {
@@ -1365,6 +1525,35 @@
   }
 
   function isMobileDevice() {
-    return window.matchMedia("(pointer: coarse)").matches || navigator.maxTouchPoints > 0 || window.innerWidth <= 760;
+    if (forcedMobile) return true;
+
+    const coarsePointer = window.matchMedia("(pointer: coarse)").matches || window.matchMedia("(any-pointer: coarse)").matches;
+    const touchCapable = navigator.maxTouchPoints > 0 || "ontouchstart" in window;
+    const mobileName = /android|iphone|ipad|ipod|mobile|tablet|xiaomi|redmi|miui/i.test(navigator.userAgent);
+
+    return coarsePointer || touchCapable || mobileName || window.innerWidth <= 760;
+  }
+
+  function getUrlTouchMode() {
+    const params = new URLSearchParams(window.location.search);
+    const value = (params.get("mobile") || params.get("touch") || "").toLowerCase();
+    return ["1", "true", "yes", "on"].includes(value);
+  }
+
+  function getSavedTouchMode() {
+    try {
+      return localStorage.getItem("blockcraft-touch-mode") === "on";
+    } catch {
+      return false;
+    }
+  }
+
+  function saveTouchMode(enabled) {
+    try {
+      if (enabled) localStorage.setItem("blockcraft-touch-mode", "on");
+      else localStorage.removeItem("blockcraft-touch-mode");
+    } catch {
+      // Some browsers block localStorage on file pages.
+    }
   }
 })();
