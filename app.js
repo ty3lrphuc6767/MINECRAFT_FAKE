@@ -56,7 +56,7 @@
   const EYE_HEIGHT = 1.72;
   const PLAYER_RADIUS = 0.35;
   const STEP_HEIGHT = 1.05;
-  const GRAVITY = 25;
+  const GRAVITY = 30;
   const JUMP_SPEED = 10;
   const SPAWN_X = 0;
   const SPAWN_Z = 10;
