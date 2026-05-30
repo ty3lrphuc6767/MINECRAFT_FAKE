@@ -18,8 +18,15 @@
   let mobileLook = document.querySelector("#mobile-look");
   let mobileJoystick = document.querySelector("#mobile-joystick");
   let mobileStick = document.querySelector("#mobile-stick");
+  let healthHud = document.querySelector("#health-hud");
+  let breakHud = document.querySelector("#break-hud");
+  let mobInfo = document.querySelector("#mob-info");
+  let recipeGrid = document.querySelector("#recipe-grid");
+  let craftingOutput = document.querySelector("#crafting-output");
+  let craftButton = document.querySelector("#craft-button");
   let slots = [];
   let inventoryButtons = [];
+  let recipeButtons = [];
 
   if (!window.THREE) {
     startScreen.querySelector("p").textContent = "Khong tai duoc Three.js.";
@@ -29,15 +36,16 @@
   }
 
   ensureInventoryMarkup();
+  ensureSurvivalMarkup();
 
   const THREE = window.THREE;
   const CHUNK_SIZE = 16;
-  const DESKTOP_RENDER_DISTANCE = 2;
+  const DESKTOP_RENDER_DISTANCE = 3;
   const MOBILE_RENDER_DISTANCE = 2;
-  const LOW_FPS_RENDER_DISTANCE = 1;
+  const LOW_FPS_RENDER_DISTANCE = 2;
   const DESKTOP_CHUNK_LOAD_BUDGET = 2;
   const MOBILE_CHUNK_LOAD_BUDGET = 1;
-  const DESKTOP_CHUNK_REBUILD_BUDGET = 1;
+  const DESKTOP_CHUNK_REBUILD_BUDGET = 2;
   const MOBILE_CHUNK_REBUILD_BUDGET = 1;
   const LOW_FPS_LIMIT = 28;
   const RECOVER_FPS_LIMIT = 50;
@@ -50,21 +58,30 @@
   const LOOK_SPEED = 0.0022;
   const WALK_SPEED = 5.2;
   const SPRINT_SPEED = 7.4;
-  const FLY_SPEED = 35.6;
+  const FLY_SPEED = 8.8;
   const FLY_VERTICAL_SPEED = 7.6;
   const PLAYER_HEIGHT = 2;
   const EYE_HEIGHT = 1.72;
   const PLAYER_RADIUS = 0.35;
   const STEP_HEIGHT = 1.05;
-  const GRAVITY = 30;
-  const JUMP_SPEED = 10;
+  const GRAVITY = 22;
+  const JUMP_SPEED = 8;
   const SPAWN_X = 0;
   const SPAWN_Z = 10;
   const SPAWN_PAD_Y = 8;
   const SPAWN_PAD_RADIUS = 9;
   const SPAWN_PAD_FADE = 16;
   const MOBILE_LOOK_SPEED = 0.006;
-
+  const MAX_HEALTH = 20;
+  const PLAYER_ATTACK_DAMAGE = 5;
+  const PLAYER_ATTACK_REACH = 3.2;
+  const PLAYER_ATTACK_COOLDOWN = 420;
+  const MOB_SPAWN_LIMIT = 18;
+  const MOB_SPAWN_INTERVAL = 1800;
+  const MOB_DESPAWN_DISTANCE = 76;
+  const MOB_TARGET_DISTANCE = 28;
+  const FALL_SAFE_DISTANCE = 3.2;
+  const BREAK_SPEED_MULTIPLIER = 1;
 
   let forcedMobile = getSavedTouchMode() || getUrlTouchMode();
   let isMobile = isMobileDevice();
@@ -97,13 +114,13 @@
   const blockGeometry = new THREE.BoxGeometry(1, 1, 1);
   const chunkMaterial = new THREE.MeshLambertMaterial({
     vertexColors: true,
-    
+    side: THREE.DoubleSide,
   });
   const waterMaterial = new THREE.MeshLambertMaterial({
     vertexColors: true,
     transparent: true,
     opacity: 0.62,
-    
+    side: THREE.DoubleSide,
   });
 
   const blockCatalog = [
@@ -140,6 +157,113 @@
   const blockByType = new Map(blockCatalog.map((block) => [block.type, block]));
   const inventoryBlocks = blockCatalog.filter((block) => block.buildable !== false);
   const blockColors = Object.fromEntries(blockCatalog.map((block) => [block.type, new THREE.Color(block.color)]));
+  const foodCatalog = [
+    { type: "apple", name: "Apple", heal: 4, swatch: "linear-gradient(135deg, #ef4a42, #8f1f21)" },
+    { type: "bread", name: "Bread", heal: 5, swatch: "linear-gradient(135deg, #e9b863, #9d652b)" },
+    { type: "beef", name: "Beef", heal: 8, swatch: "linear-gradient(135deg, #8b2d28, #d97750)" },
+    { type: "porkchop", name: "Porkchop", heal: 7, swatch: "linear-gradient(135deg, #f1a0a4, #a8454a)" },
+    { type: "chicken_food", name: "Chicken", heal: 6, swatch: "linear-gradient(135deg, #f3d4a7, #b77742)" },
+    { type: "mutton", name: "Mutton", heal: 6, swatch: "linear-gradient(135deg, #9d4545, #d48672)" },
+    { type: "carrot", name: "Carrot", heal: 3, swatch: "linear-gradient(135deg, #f28a27, #5ca333)" },
+    { type: "rotten_flesh", name: "Rotten Flesh", heal: 2, swatch: "linear-gradient(135deg, #6c7d39, #3d4923)" },
+  ];
+  const itemCatalog = [
+    ...inventoryBlocks.map((block) => ({ ...block, kind: "block", heal: 0 })),
+    ...foodCatalog.map((food) => ({ ...food, kind: "food" })),
+  ];
+  const itemByType = new Map(itemCatalog.map((item) => [item.type, item]));
+  const recipes = [
+    {
+      id: "planks",
+      label: "Go thanh",
+      output: "planks",
+      count: 4,
+      inputs: [{ type: "wood", count: 1 }],
+    },
+    {
+      id: "cobble",
+      label: "Da cuoi",
+      output: "cobble",
+      count: 2,
+      inputs: [{ type: "stone", count: 2 }],
+    },
+    {
+      id: "glass",
+      label: "Kinh",
+      output: "glass",
+      count: 1,
+      inputs: [{ type: "sand", count: 2 }],
+    },
+    {
+      id: "brick",
+      label: "Gach",
+      output: "brick",
+      count: 2,
+      inputs: [{ type: "clay", count: 2 }],
+    },
+    {
+      id: "tile",
+      label: "Nen gach",
+      output: "tile",
+      count: 2,
+      inputs: [
+        { type: "stone", count: 2 },
+        { type: "coal", count: 1 },
+      ],
+    },
+    {
+      id: "bread",
+      label: "Do an nhanh",
+      output: "bread",
+      count: 1,
+      inputs: [{ type: "carrot", count: 2 }],
+    },
+    {
+      id: "coal",
+      label: "Lo dot mini",
+      output: "coal",
+      count: 2,
+      inputs: [
+        { type: "wood", count: 1 },
+        { type: "stone", count: 1 },
+      ],
+    },
+  ];
+  const recipeById = new Map(recipes.map((recipe) => [recipe.id, recipe]));
+  const breakTimes = {
+    grass: 0.45,
+    dirt: 0.45,
+    sand: 0.4,
+    snow: 0.3,
+    leaves: 0.3,
+    wood: 1.15,
+    planks: 0.95,
+    clay: 0.8,
+    stone: 1.5,
+    cobble: 1.6,
+    coal: 1.7,
+    iron: 1.9,
+    gold: 1.9,
+    diamond: 2.2,
+    emerald: 2.2,
+    obsidian: 6,
+    brick: 1.6,
+    tile: 1.5,
+    glass: 0.35,
+    glowstone: 0.65,
+    netherrack: 0.55,
+    quartz: 1.1,
+  };
+    const mobCatalog = {
+    zombie: { name: "Zombie", hostile: true, health: 20, speed: 2.1, damage: 3, attackRange: 1.35, attackCooldown: 900, color: 0x3e9b58, accent: 0x2d4d2f, height: 1.95, width: 0.72, drop: "rotten_flesh", dropCount: [1, 2] },
+    skeleton: { name: "Skeleton", hostile: true, ranged: true, health: 20, speed: 1.75, damage: 3, attackRange: 14, attackCooldown: 1500, color: 0xd8d8cc, accent: 0x777777, height: 1.95, width: 0.64, drop: null, dropCount: [0, 0] },
+    spider: { name: "Spider", hostile: true, health: 16, speed: 2.8, damage: 2, attackRange: 1.45, attackCooldown: 700, color: 0x2b2327, accent: 0x8b1f27, height: 0.75, width: 1.2, drop: null, dropCount: [0, 0] },
+    creeper: { name: "Creeper", hostile: true, explosive: true, health: 20, speed: 2.05, damage: 9, attackRange: 2.15, attackCooldown: 1200, color: 0x55b84f, accent: 0x1c6b2f, height: 1.8, width: 0.72, drop: null, dropCount: [0, 0] },
+    cow: { name: "Cow", hostile: false, health: 10, speed: 1.15, color: 0x7b5236, accent: 0xf0eee2, height: 1.35, width: 0.95, drop: "beef", dropCount: [1, 3] },
+    pig: { name: "Pig", hostile: false, health: 10, speed: 1.2, color: 0xf0a2b1, accent: 0xc96e80, height: 0.9, width: 0.9, drop: "porkchop", dropCount: [1, 3] },
+    sheep: { name: "Sheep", hostile: false, health: 8, speed: 1.15, color: 0xeeeeee, accent: 0x6d625b, height: 1.15, width: 0.92, drop: "mutton", dropCount: [1, 2] },
+    chicken: { name: "Chicken", hostile: false, health: 4, speed: 1.35, color: 0xf7f7ef, accent: 0xe8bf32, height: 0.72, width: 0.55, drop: "chicken_food", dropCount: [1, 1] },
+  };
 
   const faceDefs = [
     {
@@ -208,6 +332,8 @@
   const blocks = new Map();
   const edits = new Map();
   const rayTargets = [];
+  const mobTargets = [];
+  const mobs = [];
   const dirtyChunks = new Set();
 
   const raycaster = new THREE.Raycaster();
@@ -229,6 +355,12 @@
   outline.visible = false;
   scene.add(outline);
 
+  const mobGroup = new THREE.Group();
+  scene.add(mobGroup);
+
+  const mobBodyGeometry = new THREE.BoxGeometry(1, 1, 1);
+  const mobMaterials = new Map();
+
   const player = {
     position: new THREE.Vector3(SPAWN_X, 12, SPAWN_Z),
     velocity: new THREE.Vector3(),
@@ -246,9 +378,20 @@
   let creativeFly = false;
   let ignoreMouseUntil = 0;
   let selectedSlot = 0;
-  let selectedType = "grass";
-  const hotbarItems = ["grass", "dirt", "stone", "sand", "wood", "planks", "leaves", "cobble", "brick"];
+  let selectedType = null;
+  let selectedRecipeId = recipes[0]?.id || null;
+  const hotbarItems = Array(HOTBAR_SIZE).fill(null);
+  const inventoryCounts = new Map();
   let hovered = null;
+  let hoveredMob = null;
+  let breakHeld = false;
+  let breakingKey = null;
+  let breakingProgress = 0;
+  let lastAttackAt = -Infinity;
+  let health = MAX_HEALTH;
+  let invincibleUntil = 0;
+  let fallDistance = 0;
+  let lastMobSpawnAt = 0;
   let mobileMoveX = 0;
   let mobileMoveY = 0;
   let joystickPointerId = null;
@@ -270,7 +413,11 @@
 
   renderHotbar();
   renderInventory();
+  renderCrafting();
   selectHotbarSlot(0);
+  updateHealthHud();
+  updateBreakHud(0);
+  updateMobInfo();
   syncUiState();
   updateChunkLoading(true, SPAWN_X, SPAWN_Z);
   rebuildDirtyChunks(9999);
@@ -295,6 +442,7 @@
     });
   }
   inventoryClose.addEventListener("click", () => closeInventory(true));
+  craftButton.addEventListener("click", craftSelectedRecipe);
 
   document.addEventListener("pointerlockchange", () => {
     pointerLocked = document.pointerLockElement === canvas;
@@ -353,8 +501,12 @@
 
   document.addEventListener("mousedown", (event) => {
     if (!playing || inventoryOpen) return;
-    if (event.button === 0) removeHoveredBlock();
-    if (event.button === 2) placeBlock();
+    if (event.button === 0) startBreakOrAttack();
+    if (event.button === 2) useSelectedItem();
+  });
+
+  document.addEventListener("mouseup", (event) => {
+    if (event.button === 0) stopBreaking();
   });
 
   document.addEventListener("contextmenu", (event) => event.preventDefault());
@@ -407,7 +559,7 @@
         event.preventDefault();
         event.stopPropagation();
         button.setPointerCapture(event.pointerId);
-        handleMobileAction(button.dataset.mobileAction, true);
+                handleMobileAction(button.dataset.mobileAction, true);
         button.classList.add("active");
       });
 
@@ -446,10 +598,15 @@
       return;
     }
 
+    if (action === "break") {
+      if (pressed && playing) startBreakOrAttack();
+      else stopBreaking();
+      return;
+    }
+
     if (!pressed) return;
 
-    if (action === "break" && playing) removeHoveredBlock();
-    else if (action === "place" && playing) placeBlock();
+    if (action === "place" && playing) useSelectedItem();
     else if (action === "inventory") openInventory();
     else if (action === "pause") pauseGame();
   }
@@ -506,7 +663,7 @@
 
     if (!startCopy) {
       startCopy = document.createElement("p");
-      startCopy.textContent = "Co san spawn phang, hang sau, ore duoi dat va void o cuc sau.";
+      startCopy.textContent = "Survival co mau, mob, thuc an, sat thuong roi va dap block co thoi gian.";
       startTitle.after(startCopy);
     }
 
@@ -595,14 +752,129 @@
             <h2>Inventory</h2>
             <button id="inventory-close" type="button">Dong</button>
           </div>
-          <div id="inventory-grid"></div>
+          <div class="inventory-body">
+            <section class="inventory-section">
+              <div class="inventory-section-title">Tui do</div>
+              <div id="inventory-grid"></div>
+            </section>
+            <section class="crafting-panel">
+              <div class="inventory-section-title">Che tao</div>
+              <div id="recipe-grid"></div>
+              <div id="crafting-output" class="crafting-output"></div>
+              <button id="craft-button" class="craft-button" type="button">Che tao</button>
+            </section>
+          </div>
         </div>
       `;
       app.append(inventory);
     }
 
+    if (!inventory.querySelector("#recipe-grid")) {
+      const panel = inventory.querySelector(".inventory-panel") || inventory;
+      panel.innerHTML = `
+        <div class="inventory-head">
+          <h2>Inventory</h2>
+          <button id="inventory-close" type="button">Dong</button>
+        </div>
+        <div class="inventory-body">
+          <section class="inventory-section">
+            <div class="inventory-section-title">Tui do</div>
+            <div id="inventory-grid"></div>
+          </section>
+          <section class="crafting-panel">
+            <div class="inventory-section-title">Che tao</div>
+            <div id="recipe-grid"></div>
+            <div id="crafting-output" class="crafting-output"></div>
+            <button id="craft-button" class="craft-button" type="button">Che tao</button>
+          </section>
+        </div>
+      `;
+    }
+
     inventoryGrid = inventory.querySelector("#inventory-grid");
     inventoryClose = inventory.querySelector("#inventory-close");
+    recipeGrid = inventory.querySelector("#recipe-grid");
+    craftingOutput = inventory.querySelector("#crafting-output");
+    craftButton = inventory.querySelector("#craft-button");
+  }
+
+  function ensureSurvivalMarkup() {
+    const app = document.querySelector("#app") || document.body;
+
+    if (!document.querySelector("#survival-style")) {
+      const style = document.createElement("style");
+      style.id = "survival-style";
+      style.textContent = `
+        #health-hud {
+          position: absolute;
+          left: 50%;
+          bottom: 78px;
+          z-index: 4;
+          display: flex;
+          gap: 4px;
+          transform: translateX(-50%);
+          pointer-events: none;
+        }
+        .heart {
+          width: 18px;
+          height: 18px;
+          border-radius: 4px;
+          background: rgba(40, 12, 18, 0.82);
+          box-shadow: inset 0 0 0 2px rgba(255,255,255,0.16), 0 2px 8px rgba(0,0,0,0.35);
+          clip-path: polygon(50% 88%, 8% 45%, 8% 22%, 24% 8%, 42% 14%, 50% 27%, 58% 14%, 76% 8%, 92% 22%, 92% 45%);
+        }
+        .heart.full { background: #e64045; }
+        .heart.half { background: linear-gradient(90deg, #e64045 0 50%, rgba(40,12,18,0.82) 50%); }
+        #break-hud {
+          position: absolute;
+          left: 50%;
+          top: calc(50% + 28px);
+          z-index: 4;
+          width: 96px;
+          height: 8px;
+          transform: translateX(-50%);
+          border: 1px solid rgba(255,255,255,0.38);
+          border-radius: 999px;
+          background: rgba(5,8,12,0.72);
+          overflow: hidden;
+          pointer-events: none;
+        }
+        #break-hud .break-fill {
+          width: 0%;
+          height: 100%;
+          background: #ffd45a;
+        }
+        body.mobile.playing #health-hud { bottom: 64px; }
+        body.mobile.playing #break-hud { top: calc(50% + 30px); }
+      `;
+      document.head.append(style);
+    }
+
+    if (!healthHud) {
+      healthHud = document.createElement("div");
+      healthHud.id = "health-hud";
+      app.append(healthHud);
+    }
+
+    if (!breakHud) {
+      breakHud = document.createElement("div");
+      breakHud.id = "break-hud";
+      breakHud.className = "hidden";
+      breakHud.innerHTML = `<div class="break-fill"></div>`;
+      app.append(breakHud);
+    }
+
+    if (!mobInfo) {
+      mobInfo = document.createElement("div");
+      mobInfo.id = "mob-info";
+      mobInfo.className = "mob-info hidden";
+      mobInfo.innerHTML = `
+        <span class="mob-name"></span>
+        <span class="mob-kind"></span>
+        <span class="mob-health"><span></span></span>
+      `;
+      app.append(mobInfo);
+    }
   }
 
   function startPlaying() {
@@ -619,6 +891,9 @@
   function openInventory() {
     inventoryOpen = true;
     keys.clear();
+    stopBreaking();
+    renderInventory();
+    renderCrafting();
     if (document.pointerLockElement === canvas && document.exitPointerLock) {
       document.exitPointerLock();
     }
@@ -634,6 +909,7 @@
   function pauseGame() {
     keys.clear();
     resetMobileInput();
+    stopBreaking();
 
     if (isMobile) {
       mobilePaused = true;
@@ -667,8 +943,8 @@
     startCopy.textContent = hasStarted
       ? creativeFly
         ? "Creative Fly dang bat. Space bay len, Ctrl ha xuong, van pha/dat block binh thuong."
-        : "Nhan tiep tuc de quay lai game. Bat Creative Fly neu chi muon bay."
-      : "Co san spawn phang, hang sau, ore duoi dat va void o cuc sau.";
+        : "Nhan tiep tuc de quay lai game. Sinh ton co mau, mob, thuc an va dap block co thoi gian."
+      : "Survival co mau, mob, thuc an, sat thuong roi va dap block co thoi gian.";
     startButton.textContent = hasStarted ? "Tiep tuc" : "Bat dau";
     flyToggle.textContent = creativeFly ? "Creative Fly: ON" : "Creative Fly: OFF";
     flyToggle.classList.toggle("active", creativeFly);
@@ -822,7 +1098,7 @@
     }
 
     const topY = y + treeHeight - 1;
-    for (let dx = -2; dx <= 2; dx += 1) {
+        for (let dx = -2; dx <= 2; dx += 1) {
       for (let dy = -2; dy <= 2; dy += 1) {
         for (let dz = -2; dz <= 2; dz += 1) {
           const distance = Math.abs(dx) + Math.abs(dz) + Math.max(0, dy) * 0.85;
@@ -1016,27 +1292,31 @@
 
   function removeBlock(key) {
     const type = blocks.get(key);
-    if (!type || type === "water") return;
+    if (!type || type === "water") return null;
 
     const [x, y, z] = parseKey(key);
     const chunk = chunks.get(chunkKey(worldToChunk(x), worldToChunk(z)));
-    if (!chunk) return;
+    if (!chunk) return null;
 
     chunk.blocks.delete(key);
     blocks.delete(key);
     edits.set(key, null);
     markBlockAreaDirty(x, z);
     updateHud();
+    return type;
   }
 
   function removeHoveredBlock() {
     updateTarget(performance.now(), true);
-    if (hovered) removeBlock(hovered.key);
+    if (!hovered) return;
+    const type = removeBlock(hovered.key);
+    if (type) collectBlockDrop(type);
   }
 
   function placeBlock() {
     updateTarget(performance.now(), true);
     if (!hovered) return;
+    if (!selectedType || !isBlockItem(selectedType) || inventoryCount(selectedType) <= 0) return;
 
     placeNormal.set(hovered.normal.x, hovered.normal.y, hovered.normal.z);
     const x = hovered.x + placeNormal.x;
@@ -1044,7 +1324,82 @@
     const z = hovered.z + placeNormal.z;
 
     if (wouldBlockPlayer(x, y, z)) return;
-    addBlock(x, y, z, selectedType);
+    if (addBlock(x, y, z, selectedType)) addInventory(selectedType, -1);
+  }
+
+  function useSelectedItem() {
+    updateTarget(performance.now(), true);
+    if (!selectedType) return;
+
+    const item = itemByType.get(selectedType);
+    if (item?.kind === "food") {
+      eatSelectedFood(item);
+      return;
+    }
+
+    placeBlock();
+  }
+
+  function startBreakOrAttack() {
+    updateTarget(performance.now(), true);
+    if (hoveredMob) {
+      attackMob(hoveredMob);
+      return;
+    }
+
+    if (!hovered) return;
+    breakHeld = true;
+    if (breakingKey !== hovered.key) {
+      breakingKey = hovered.key;
+      breakingProgress = 0;
+    }
+  }
+
+  function stopBreaking() {
+    breakHeld = false;
+    breakingKey = null;
+    breakingProgress = 0;
+    updateBreakHud(0);
+  }
+
+  function updateBreaking(dt) {
+    if (!breakHeld || !playing) {
+      updateBreakHud(0);
+      return;
+    }
+
+    updateTarget(performance.now(), true);
+    if (!hovered || hovered.key !== breakingKey) {
+      breakingKey = hovered?.key || null;
+      breakingProgress = 0;
+      updateBreakHud(0);
+      return;
+    }
+
+    const type = blocks.get(breakingKey);
+    const needed = (breakTimes[type] || 1) * BREAK_SPEED_MULTIPLIER;
+    breakingProgress += dt;
+    updateBreakHud(THREE.MathUtils.clamp(breakingProgress / needed, 0, 1));
+
+    if (breakingProgress >= needed) {
+      removeHoveredBlock();
+      stopBreaking();
+    }
+  }
+
+  function eatSelectedFood(item) {
+    if (inventoryCount(item.type) <= 0 || health >= MAX_HEALTH) return;
+    addInventory(item.type, -1);
+    healPlayer(item.heal);
+  }
+
+  function attackMob(mob) {
+    const now = performance.now();
+    if (!mob || mob.dead || now - lastAttackAt < PLAYER_ATTACK_COOLDOWN) return;
+    if (mob.position.distanceTo(player.position) > PLAYER_ATTACK_REACH + 1) return;
+
+    lastAttackAt = now;
+    damageMob(mob, PLAYER_ATTACK_DAMAGE);
   }
 
   function loop(now) {
@@ -1054,8 +1409,11 @@
     updateChunkLoading(false);
     rebuildDirtyChunks(isMobile ? MOBILE_CHUNK_REBUILD_BUDGET : DESKTOP_CHUNK_REBUILD_BUDGET);
     updateMovement(dt);
+    updateBreaking(dt);
+    updateMobs(dt, now);
     updateCamera();
     updateTarget(now);
+    updateMobInfo();
     renderer.render(scene, camera);
     updateFps(now);
     requestAnimationFrame(loop);
@@ -1131,6 +1489,7 @@
     const oldZ = player.position.z;
     const oldY = player.position.y;
     const oldFootY = player.position.y - EYE_HEIGHT;
+    const wasGrounded = player.grounded;
 
     player.position.x += player.velocity.x * dt;
     player.position.z += player.velocity.z * dt;
@@ -1154,8 +1513,15 @@
       player.position.y = groundY + EYE_HEIGHT;
       player.velocity.y = 0;
       player.grounded = true;
+      if (!wasGrounded) {
+        applyFallDamage(fallDistance);
+        fallDistance = 0;
+      }
     } else {
       player.grounded = false;
+      if (player.velocity.y < 0) {
+        fallDistance += Math.max(0, oldY - player.position.y);
+      }
     }
 
     if (player.position.y < VOID_Y) {
@@ -1182,7 +1548,7 @@
     for (const sample of samples) {
       const ground = columnTop(sample.x, sample.z, maxStepTop);
       if (ground === -Infinity || !hasBodyClearance(sample.x, sample.z, ground)) return false;
-    }
+          }
 
     return true;
   }
@@ -1281,10 +1647,21 @@
     raycaster.set(camera.position, cameraDir);
     raycaster.far = REACH;
 
-    const hits = raycaster.intersectObjects(rayTargets, false);
+    const mobHits = raycaster.intersectObjects(mobTargets, false);
+    const blockHits = raycaster.intersectObjects(rayTargets, false);
     hovered = null;
+    hoveredMob = null;
 
-    for (const hit of hits) {
+    const mobHit = mobHits.find((hit) => hit.object.userData.mob && !hit.object.userData.mob.dead);
+    const firstBlockHit = blockHits.find((hit) => hit.object.userData.faceBlocks?.[hit.faceIndex]);
+
+    if (mobHit && (!firstBlockHit || mobHit.distance < firstBlockHit.distance)) {
+      hoveredMob = mobHit.object.userData.mob;
+      outline.visible = false;
+      return;
+    }
+
+    for (const hit of blockHits) {
       const faceInfo = hit.object.userData.faceBlocks?.[hit.faceIndex];
       if (!faceInfo) continue;
       hovered = faceInfo;
@@ -1297,6 +1674,23 @@
     } else {
       outline.visible = false;
     }
+  }
+
+  function updateMobInfo() {
+    if (!mobInfo) return;
+
+    if (!hoveredMob || hoveredMob.dead) {
+      mobInfo.classList.add("hidden");
+      return;
+    }
+
+    const config = hoveredMob.config;
+    const maxHealth = Math.max(1, config.health || hoveredMob.health || 1);
+    const healthPercent = THREE.MathUtils.clamp((hoveredMob.health / maxHealth) * 100, 0, 100);
+    mobInfo.querySelector(".mob-name").textContent = config.name;
+    mobInfo.querySelector(".mob-kind").textContent = config.hostile ? "Hostile mob" : "Passive mob";
+    mobInfo.querySelector(".mob-health span").style.width = `${healthPercent}%`;
+    mobInfo.classList.remove("hidden");
   }
 
   function updateFps(now) {
@@ -1312,6 +1706,27 @@
 
   function updateHud() {
     countLabel.textContent = `${chunks.size} chunks / ${blocks.size} blocks | RD ${renderDistance}`;
+  }
+
+  function updateHealthHud() {
+    if (!healthHud) return;
+    healthHud.innerHTML = "";
+    const hearts = Math.ceil(MAX_HEALTH / 2);
+    for (let i = 0; i < hearts; i += 1) {
+      const heart = document.createElement("span");
+      heart.className = "heart";
+      const value = health - i * 2;
+      if (value >= 2) heart.classList.add("full");
+      else if (value === 1) heart.classList.add("half");
+      healthHud.append(heart);
+    }
+  }
+
+  function updateBreakHud(progress) {
+    if (!breakHud) return;
+    breakHud.classList.toggle("hidden", progress <= 0);
+    const fill = breakHud.querySelector(".break-fill");
+    if (fill) fill.style.width = `${Math.round(progress * 100)}%`;
   }
 
   function resize() {
@@ -1411,24 +1826,444 @@
     resize();
   }
 
+  function damagePlayer(amount) {
+    const now = performance.now();
+    if (amount <= 0 || now < invincibleUntil || health <= 0) return;
+
+    health = Math.max(0, health - Math.round(amount));
+    invincibleUntil = now + 620;
+    updateHealthHud();
+
+    if (health <= 0) respawnAfterDeath();
+  }
+
+  function healPlayer(amount) {
+    health = Math.min(MAX_HEALTH, health + Math.round(amount));
+    updateHealthHud();
+  }
+
+  function applyFallDamage(distance) {
+    if (creativeFly || distance <= FALL_SAFE_DISTANCE) return;
+    damagePlayer(Math.ceil((distance - FALL_SAFE_DISTANCE) * 1.35));
+  }
+
+  function respawnAfterDeath() {
+    health = MAX_HEALTH;
+    fallDistance = 0;
+    stopBreaking();
+    updateHealthHud();
+    spawnPlayer();
+  }
+
+  function addInventory(type, amount) {
+    if (!itemByType.has(type) || amount === 0) return;
+    const next = Math.max(0, inventoryCount(type) + amount);
+
+    if (next === 0) {
+      inventoryCounts.delete(type);
+      for (let i = 0; i < hotbarItems.length; i += 1) {
+        if (hotbarItems[i] === type) hotbarItems[i] = null;
+      }
+      if (selectedType === type) selectedType = hotbarItems[selectedSlot] || null;
+    } else {
+      inventoryCounts.set(type, next);
+      if (amount > 0 && !hotbarItems.includes(type)) {
+        const emptySlot = hotbarItems.findIndex((item) => !item);
+        if (emptySlot >= 0) {
+          hotbarItems[emptySlot] = type;
+          if (!selectedType || emptySlot === selectedSlot) selectedType = type;
+        }
+      }
+    }
+
+    renderHotbar();
+    renderInventory();
+    renderCrafting();
+    syncActiveBlockButtons();
+  }
+
+  function collectBlockDrop(type) {
+    if (type === "leaves" && Math.random() < 0.22) {
+      addInventory("apple", 1);
+      return;
+    }
+
+    if (type === "grass" && Math.random() < 0.1) {
+      addInventory("carrot", 1);
+    }
+
+    if (type === "grass" && Math.random() < 0.03) {
+      addInventory("bread", 1);
+    }
+
+    if (itemByType.has(type)) addInventory(type, 1);
+  }
+
+  function inventoryCount(type) {
+    return inventoryCounts.get(type) || 0;
+  }
+
+  function isBlockItem(type) {
+    return itemByType.get(type)?.kind === "block";
+  }
+
+  function spawnMob(type, x, z) {
+    const config = mobCatalog[type];
+    if (!config) return null;
+
+    const groundY = groundAt(x, z);
+    if (!Number.isFinite(groundY)) return null;
+
+    const mob = {
+      id: `${type}-${performance.now()}-${Math.random()}`,
+      type,
+      config,
+      health: config.health,
+      maxHealth: config.health,
+      position: new THREE.Vector3(x, groundY, z),
+      velocity: new THREE.Vector3(),
+      yaw: hash("mob-yaw", x, z) * Math.PI * 2,
+      walkTime: 0,
+      wanderUntil: 0,
+      nextAttackAt: 0,
+      fuse: 0,
+      dead: false,
+      mesh: createMobMesh(type, config),
+    };
+
+    mob.mesh.traverse((part) => {
+      if (part.isMesh) part.userData.mob = mob;
+    });
+    mob.mesh.position.copy(mob.position);
+    mobGroup.add(mob.mesh);
+    mobs.push(mob);
+    return mob;
+  }
+
+  function createMobMesh(type, config) {
+    const group = new THREE.Group();
+    const bodyMaterial = mobMaterial(config.color);
+    const accentMaterial = mobMaterial(config.accent);
+    const faceMaterial = mobMaterial(0x101114);
+    const bowMaterial = mobMaterial(0x6b3f1f);
+    const stringMaterial = mobMaterial(0xe8dfc9);
+    const width = config.width;
+    const height = config.height;
+    const parts = {};
+
+    function part(name, material, sx, sy, sz, x, y, z, parent = group) {
+      const mesh = new THREE.Mesh(mobBodyGeometry, material);
+      mesh.scale.set(sx, sy, sz);
+      mesh.position.set(x, y, z);
+      mesh.userData.basePosition = mesh.position.clone();
+      mesh.userData.mobType = type;
+      parent.add(mesh);
+      if (name) parts[name] = mesh;
+      return mesh;
+    }
+
+    const humanoid = ["zombie", "skeleton", "creeper"].includes(type);
+
+    if (humanoid) {
+      part("body", bodyMaterial, width, height * 0.56, width * 0.48, 0, height * 0.42, 0);
+      part("head", accentMaterial, width * 0.72, height * 0.28, width * 0.72, 0, height * 0.86, -width * 0.04);
+      part("leftArm", bodyMaterial, width * 0.2, height * 0.5, width * 0.22, -width * 0.66, height * 0.42, -width * 0.03);
+      part("rightArm", bodyMaterial, width * 0.2, height * 0.5, width * 0.22, width * 0.66, height * 0.42, -width * 0.03);
+      part("leftLeg", bodyMaterial, width * 0.24, height * 0.42, width * 0.24, -width * 0.2, height * 0.12, 0);
+      part("rightLeg", bodyMaterial, width * 0.24, height * 0.42, width * 0.24, width * 0.2, height * 0.12, 0);
+      part("leftEye", faceMaterial, width * 0.09, height * 0.035, width * 0.035, -width * 0.16, height * 0.9, -width * 0.42);
+      part("rightEye", faceMaterial, width * 0.09, height * 0.035, width * 0.035, width * 0.16, height * 0.9, -width * 0.42);
+      part("mouth", faceMaterial, width * 0.2, height * 0.035, width * 0.035, 0, height * 0.79, -width * 0.42);
+
+      if (type === "skeleton") {
+        const bow = new THREE.Group();
+        bow.position.set(width * 0.93, height * 0.47, -width * 0.34);
+        bow.rotation.set(0.15, 0.05, -0.28);
+        bow.userData.basePosition = bow.position.clone();
+        group.add(bow);
+        parts.bow = bow;
+        part("bowGrip", bowMaterial, width * 0.055, height * 0.46, width * 0.055, 0, 0, 0, bow);
+        part("bowTop", bowMaterial, width * 0.05, height * 0.18, width * 0.05, 0, height * 0.3, -width * 0.09, bow);
+        part("bowBottom", bowMaterial, width * 0.05, height * 0.18, width * 0.05, 0, -height * 0.3, -width * 0.09, bow);
+        part("bowString", stringMaterial, width * 0.025, height * 0.63, width * 0.025, 0, 0, -width * 0.18, bow);
+      }
+    } else if (type === "spider") {
+      part("body", bodyMaterial, width, height * 0.45, width, 0, height * 0.34, 0);
+      part("head", accentMaterial, width * 0.52, height * 0.28, width * 0.52, 0, height * 0.45, -width * 0.48);
+      part("leftEye", faceMaterial, width * 0.08, height * 0.04, width * 0.025, -width * 0.12, height * 0.49, -width * 0.76);
+      part("rightEye", faceMaterial, width * 0.08, height * 0.04, width * 0.025, width * 0.12, height * 0.49, -width * 0.76);
+      part("mouth", faceMaterial, width * 0.18, height * 0.025, width * 0.025, 0, height * 0.4, -width * 0.76);
+      for (let i = 0; i < 4; i += 1) {
+        const z = -width * 0.34 + i * width * 0.23;
+        const left = part(`legL${i}`, bodyMaterial, width * 0.55, height * 0.08, width * 0.08, -width * 0.72, height * 0.28, z);
+        const right = part(`legR${i}`, bodyMaterial, width * 0.55, height * 0.08, width * 0.08, width * 0.72, height * 0.28, z);
+        left.rotation.z = 0.28;
+        right.rotation.z = -0.28;
+      }
+    } else {
+      part("body", bodyMaterial, width, height * 0.58, width * 1.12, 0, height * 0.46, 0);
+      part("head", accentMaterial, width * 0.54, height * 0.36, width * 0.54, 0, height * 0.74, -width * 0.72);
+      part("leftEye", faceMaterial, width * 0.07, height * 0.035, width * 0.025, -width * 0.12, height * 0.79, -width * 1.01);
+      part("rightEye", faceMaterial, width * 0.07, height * 0.035, width * 0.025, width * 0.12, height * 0.79, -width * 1.01);
+      part("mouth", faceMaterial, width * 0.18, height * 0.03, width * 0.025, 0, height * 0.68, -width * 1.01);
+      part("legLF", bodyMaterial, width * 0.16, height * 0.34, width * 0.16, -width * 0.31, height * 0.15, -width * 0.38);
+      part("legRF", bodyMaterial, width * 0.16, height * 0.34, width * 0.16, width * 0.31, height * 0.15, -width * 0.38);
+      part("legLB", bodyMaterial, width * 0.16, height * 0.34, width * 0.16, -width * 0.31, height * 0.15, width * 0.38);
+      part("legRB", bodyMaterial, width * 0.16, height * 0.34, width * 0.16, width * 0.31, height * 0.15, width * 0.38);
+    }
+
+    group.userData.parts = parts;
+
+    group.traverse((part) => {
+      if (part.isMesh) {
+        part.userData.mob = null;
+        mobTargets.push(part);
+      }
+    });
+
+    return group;
+  }
+
+  function mobMaterial(color) {
+    if (!mobMaterials.has(color)) {
+      mobMaterials.set(color, new THREE.MeshLambertMaterial({ color }));
+    }
+    return mobMaterials.get(color);
+  }
+
+  function updateMobs(dt, now) {
+    if (!playing) return;
+    maybeSpawnMobs(now);
+
+    for (let i = mobs.length - 1; i >= 0; i -= 1) {
+      const mob = mobs[i];
+      if (mob.dead) {
+        removeMob(mob, i);
+        continue;
+      }
+
+      const distanceToPlayer = mob.position.distanceTo(player.position);
+      if (distanceToPlayer > MOB_DESPAWN_DISTANCE) {
+        removeMob(mob, i);
+        continue;
+      }
+
+      const beforeX = mob.position.x;
+      const beforeZ = mob.position.z;
+      updateMobAi(mob, dt, now, distanceToPlayer);
+      const moving = Math.hypot(mob.position.x - beforeX, mob.position.z - beforeZ) > 0.001;
+      animateMob(mob, dt, now, moving, distanceToPlayer);
+      mob.mesh.position.copy(mob.position);
+      mob.mesh.rotation.y = mob.yaw;
+    }
+  }
+
+  function maybeSpawnMobs(now) {
+    if (mobs.length >= MOB_SPAWN_LIMIT || now - lastMobSpawnAt < MOB_SPAWN_INTERVAL) return;
+    lastMobSpawnAt = now;
+
+    const angle = Math.random() * Math.PI * 2;
+    const distance = 18 + Math.random() * 26;
+    const x = Math.round(player.position.x + Math.cos(angle) * distance);
+    const z = Math.round(player.position.z + Math.sin(angle) * distance);
+    const groundY = groundAt(x, z);
+    if (!Number.isFinite(groundY) || Math.abs(groundY - (player.position.y - EYE_HEIGHT)) > 18) return;
+
+    const hostileChance = 0.46;
+    const hostile = ["zombie", "skeleton", "spider", "creeper"];
+    const passive = ["cow", "pig", "sheep", "chicken"];
+    const list = Math.random() < hostileChance ? hostile : passive;
+    spawnMob(list[Math.floor(Math.random() * list.length)], x, z);
+  }
+
+  function updateMobAi(mob, dt, now, distanceToPlayer) {
+    const config = mob.config;
+    const footY = mob.position.y;
+    const target = new THREE.Vector3();
+
+    if (config.hostile && distanceToPlayer < MOB_TARGET_DISTANCE) {
+      target.copy(player.position).sub(mob.position);
+      target.y = 0;
+
+      if (config.ranged && distanceToPlayer < config.attackRange) {
+        if (now >= mob.nextAttackAt) {
+          mob.nextAttackAt = now + config.attackCooldown;
+          damagePlayer(config.damage);
+        }
+      } else if (target.lengthSq() > 0.001) {
+        target.normalize();
+        mob.position.addScaledVector(target, config.speed * dt);
+        mob.yaw = Math.atan2(target.x, target.z);
+      }
+
+      if (!config.ranged && distanceToPlayer < config.attackRange && now >= mob.nextAttackAt) {
+        mob.nextAttackAt = now + config.attackCooldown;
+        if (config.explosive) {
+          damagePlayer(config.damage);
+          mob.dead = true;
+        } else {
+          damagePlayer(config.damage);
+        }
+      }
+    } else {
+      if (now > mob.wanderUntil) {
+        mob.wanderUntil = now + 900 + Math.random() * 1800;
+                mob.yaw += (Math.random() - 0.5) * Math.PI * 1.4;
+      }
+      target.set(Math.sin(mob.yaw), 0, Math.cos(mob.yaw));
+      mob.position.addScaledVector(target, config.speed * 0.45 * dt);
+    }
+
+    const ground = groundAt(mob.position.x, mob.position.z, footY + 1.4);
+    if (Number.isFinite(ground)) mob.position.y = ground;
+  }
+
+  function animateMob(mob, dt, now, moving, distanceToPlayer) {
+    const parts = mob.mesh.userData.parts || {};
+    const speed = moving ? 1 : 0;
+    mob.walkTime += dt * (moving ? 7.5 : 2.2);
+    const wave = Math.sin(mob.walkTime);
+    const counter = Math.cos(mob.walkTime);
+    const bob = Math.abs(wave) * 0.035 * speed;
+
+    resetPart(parts.body);
+    resetPart(parts.head);
+    if (parts.body) parts.body.position.y += bob;
+    if (parts.head) {
+      parts.head.position.y += bob * 0.6;
+      parts.head.rotation.x = Math.sin(now * 0.002 + mob.id.length) * 0.035;
+    }
+
+    const humanoid = ["zombie", "skeleton", "creeper"].includes(mob.type);
+    if (humanoid) {
+      resetPart(parts.leftArm);
+      resetPart(parts.rightArm);
+      resetPart(parts.leftLeg);
+      resetPart(parts.rightLeg);
+      if (parts.leftArm) parts.leftArm.rotation.x = wave * 0.55 * speed;
+      if (parts.rightArm) parts.rightArm.rotation.x = -wave * 0.55 * speed;
+      if (parts.leftLeg) parts.leftLeg.rotation.x = -wave * 0.65 * speed;
+      if (parts.rightLeg) parts.rightLeg.rotation.x = wave * 0.65 * speed;
+
+      if (mob.type === "zombie") {
+        if (parts.leftArm) parts.leftArm.rotation.x = -0.85 + wave * 0.12;
+        if (parts.rightArm) parts.rightArm.rotation.x = -0.85 - wave * 0.12;
+      }
+
+      if (mob.type === "skeleton") {
+        const aiming = distanceToPlayer < mob.config.attackRange;
+        if (parts.rightArm) {
+          parts.rightArm.rotation.x = aiming ? -1.05 : -wave * 0.45 * speed;
+          parts.rightArm.rotation.z = aiming ? -0.16 : 0;
+        }
+        if (parts.leftArm) parts.leftArm.rotation.x = aiming ? -0.78 : wave * 0.45 * speed;
+        if (parts.bow) {
+          parts.bow.visible = true;
+          parts.bow.position.copy(parts.bow.userData.basePosition);
+          parts.bow.position.y += bob;
+          parts.bow.rotation.x = aiming ? -0.15 : 0.15;
+          parts.bow.rotation.y = aiming ? -0.2 : 0.05;
+          parts.bow.rotation.z = aiming ? -0.55 : -0.28;
+        }
+      }
+
+      if (mob.type === "creeper") {
+        if (parts.leftArm) parts.leftArm.visible = false;
+        if (parts.rightArm) parts.rightArm.visible = false;
+      }
+      return;
+    }
+
+    if (mob.type === "spider") {
+      for (let i = 0; i < 4; i += 1) {
+        const left = parts[`legL${i}`];
+        const right = parts[`legR${i}`];
+        resetPart(left);
+        resetPart(right);
+        const offset = i % 2 === 0 ? wave : counter;
+        if (left) left.rotation.z = 0.28 + offset * 0.25 * speed;
+        if (right) right.rotation.z = -0.28 - offset * 0.25 * speed;
+      }
+      return;
+    }
+
+    const animalLegs = ["legLF", "legRF", "legLB", "legRB"];
+    for (const name of animalLegs) resetPart(parts[name]);
+    if (parts.legLF) parts.legLF.rotation.x = wave * 0.55 * speed;
+    if (parts.legRB) parts.legRB.rotation.x = wave * 0.55 * speed;
+    if (parts.legRF) parts.legRF.rotation.x = -wave * 0.55 * speed;
+    if (parts.legLB) parts.legLB.rotation.x = -wave * 0.55 * speed;
+    if (parts.head) parts.head.rotation.y = Math.sin(now * 0.0015 + mob.position.x) * 0.18;
+  }
+
+  function resetPart(part) {
+    if (!part) return;
+    if (part.userData.basePosition) part.position.copy(part.userData.basePosition);
+    part.rotation.set(0, 0, 0);
+    part.visible = true;
+  }
+
+  function damageMob(mob, amount) {
+    mob.health -= amount;
+    mob.mesh.scale.setScalar(1.08);
+    setTimeout(() => {
+      if (!mob.dead) mob.mesh.scale.setScalar(1);
+    }, 90);
+
+    const push = mob.position.clone().sub(player.position);
+    push.y = 0;
+    if (push.lengthSq() > 0.001) {
+      push.normalize();
+      mob.position.addScaledVector(push, 0.55);
+    }
+
+    if (mob.health <= 0) {
+      dropMobLoot(mob);
+      mob.dead = true;
+    }
+
+    if (hoveredMob === mob) updateMobInfo();
+  }
+
+  function dropMobLoot(mob) {
+    const { drop, dropCount } = mob.config;
+    if (!drop) return;
+    const min = dropCount?.[0] || 1;
+    const max = dropCount?.[1] || min;
+    const count = min + Math.floor(Math.random() * (max - min + 1));
+    addInventory(drop, count);
+  }
+
+  function removeMob(mob, index = mobs.indexOf(mob)) {
+    mobGroup.remove(mob.mesh);
+    mob.mesh.traverse((part) => {
+      if (part.isMesh) {
+        const targetIndex = mobTargets.indexOf(part);
+        if (targetIndex >= 0) mobTargets.splice(targetIndex, 1);
+      }
+    });
+    if (index >= 0) mobs.splice(index, 1);
+  }
+
   function renderHotbar() {
     hotbar.innerHTML = "";
     slots = [];
 
     for (let i = 0; i < HOTBAR_SIZE; i += 1) {
-      const type = hotbarItems[i] || inventoryBlocks[i % inventoryBlocks.length].type;
-      hotbarItems[i] = type;
+      const type = hotbarItems[i];
 
       const button = document.createElement("button");
       button.className = "slot";
       button.type = "button";
       button.dataset.index = String(i);
-      button.dataset.type = type;
-      button.setAttribute("aria-label", `${blockName(type)} ${i + 1}`);
+      button.dataset.type = type || "";
+      button.setAttribute("aria-label", `${itemName(type)} ${i + 1}`);
       button.append(createSwatch(type));
 
       const keyLabel = document.createElement("b");
-      keyLabel.textContent = String(i + 1);
+      const count = type ? inventoryCount(type) : 0;
+      keyLabel.className = type && count > 1 ? "slot-count" : "slot-key";
+      keyLabel.textContent = type && count > 1 ? String(count) : String(i + 1);
       button.append(keyLabel);
 
       button.addEventListener("click", () => selectHotbarSlot(i));
@@ -1443,23 +2278,40 @@
     inventoryGrid.innerHTML = "";
     inventoryButtons = [];
 
-    for (const block of inventoryBlocks) {
+    const availableItems = itemCatalog.filter((item) => inventoryCount(item.type) > 0);
+
+    if (availableItems.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "inventory-empty";
+      empty.textContent = "Inventory trong. Hay dap block hoac danh mob de nhat do.";
+      inventoryGrid.append(empty);
+      syncActiveBlockButtons();
+      return;
+    }
+
+    for (const item of availableItems) {
       const button = document.createElement("button");
       button.className = "block-button";
       button.type = "button";
-      button.dataset.type = block.type;
-      button.setAttribute("aria-label", block.name);
-      button.append(createSwatch(block.type));
+      button.dataset.type = item.type;
+      button.setAttribute("aria-label", item.name);
+      button.append(createSwatch(item.type));
 
       const name = document.createElement("span");
       name.className = "block-name";
-      name.textContent = block.name;
+      name.textContent = item.name;
       button.append(name);
+
+      const count = document.createElement("span");
+      count.className = "item-count";
+      count.textContent = String(inventoryCount(item.type));
+      button.append(count);
 
       button.addEventListener("click", (event) => {
         event.stopPropagation();
-        assignBlockToSelectedSlot(block.type);
-        closeInventory(true);
+        assignBlockToSelectedSlot(item.type);
+        renderInventory();
+        renderCrafting();
       });
 
       inventoryGrid.append(button);
@@ -1469,10 +2321,109 @@
     syncActiveBlockButtons();
   }
 
+  function renderCrafting() {
+    if (!recipeGrid || !craftingOutput || !craftButton) return;
+
+    recipeGrid.innerHTML = "";
+    recipeButtons = [];
+
+    for (const recipe of recipes) {
+      const button = document.createElement("button");
+      const craftable = canCraftRecipe(recipe);
+      button.className = "recipe-button";
+      button.classList.toggle("active", recipe.id === selectedRecipeId);
+      button.classList.toggle("locked", !craftable);
+      button.type = "button";
+      button.dataset.recipe = recipe.id;
+      button.append(createSwatch(recipe.output));
+
+      const detail = document.createElement("span");
+      detail.className = "recipe-detail";
+
+      const title = document.createElement("strong");
+      title.textContent = `${recipe.label} x${recipe.count}`;
+      detail.append(title);
+
+      const cost = document.createElement("small");
+      cost.textContent = recipeInputText(recipe);
+      detail.append(cost);
+
+      button.append(detail);
+      button.addEventListener("click", () => selectRecipe(recipe.id));
+      recipeGrid.append(button);
+      recipeButtons.push(button);
+    }
+
+    syncCraftingOutput();
+  }
+
+  function selectRecipe(id) {
+    selectedRecipeId = id;
+    renderCrafting();
+  }
+
+  function craftSelectedRecipe() {
+    const recipe = recipeById.get(selectedRecipeId);
+    if (!recipe || !canCraftRecipe(recipe)) return;
+
+    for (const input of recipe.inputs) {
+      addInventory(input.type, -input.count);
+    }
+
+    addInventory(recipe.output, recipe.count);
+    selectedRecipeId = recipe.id;
+    renderInventory();
+    renderCrafting();
+  }
+
+  function canCraftRecipe(recipe) {
+    return recipe.inputs.every((input) => inventoryCount(input.type) >= input.count);
+  }
+
+  function recipeInputText(recipe) {
+    return recipe.inputs
+      .map((input) => `${itemName(input.type)} x${input.count}`)
+      .join(" + ");
+  }
+
+  function syncCraftingOutput() {
+    const recipe = recipeById.get(selectedRecipeId);
+
+    if (!recipe) {
+      craftingOutput.textContent = "Chon cong thuc.";
+      craftButton.disabled = true;
+      return;
+    }
+
+    const craftable = canCraftRecipe(recipe);
+    const outputItem = itemByType.get(recipe.output);
+    craftingOutput.innerHTML = "";
+    craftingOutput.append(createSwatch(recipe.output));
+
+    const result = document.createElement("span");
+    result.className = "recipe-result";
+    result.textContent = `${outputItem?.name || recipe.output} x${recipe.count}`;
+    craftingOutput.append(result);
+
+    const cost = document.createElement("span");
+    cost.className = "recipe-cost";
+    cost.textContent = craftable ? recipeInputText(recipe) : `Thieu: ${missingRecipeText(recipe)}`;
+    craftingOutput.append(cost);
+
+    craftButton.disabled = !craftable;
+  }
+
+  function missingRecipeText(recipe) {
+    return recipe.inputs
+      .filter((input) => inventoryCount(input.type) < input.count)
+      .map((input) => `${itemName(input.type)} x${input.count - inventoryCount(input.type)}`)
+      .join(", ");
+  }
+
   function createSwatch(type) {
     const swatch = document.createElement("span");
     swatch.className = "swatch";
-    swatch.style.background = blockByType.get(type)?.swatch || "#ffffff";
+    swatch.style.background = itemByType.get(type)?.swatch || "rgba(255,255,255,0.08)";
     return swatch;
   }
 
@@ -1483,7 +2434,7 @@
   }
 
   function assignBlockToSelectedSlot(type) {
-    if (!blockByType.has(type)) return;
+    if (!itemByType.has(type) || inventoryCount(type) <= 0) return;
     hotbarItems[selectedSlot] = type;
     selectedType = type;
     renderHotbar();
@@ -1492,8 +2443,8 @@
   function syncActiveBlockButtons() {
     slots.forEach((slot, index) => {
       const type = hotbarItems[index];
-      slot.dataset.type = type;
-      slot.setAttribute("aria-label", `${blockName(type)} ${index + 1}`);
+      slot.dataset.type = type || "";
+      slot.setAttribute("aria-label", `${itemName(type)} ${index + 1}`);
       slot.classList.toggle("active", index === selectedSlot);
     });
 
@@ -1501,11 +2452,16 @@
       button.classList.toggle("active", button.dataset.type === selectedType);
     });
 
-    if (selectedLabel) selectedLabel.textContent = blockName(selectedType);
+    if (selectedLabel) selectedLabel.textContent = itemName(selectedType);
   }
 
   function blockName(type) {
     return blockByType.get(type)?.name || type;
+  }
+
+  function itemName(type) {
+    if (!type) return "Empty";
+    return itemByType.get(type)?.name || blockName(type);
   }
 
   function terrainHeight(x, z) {
