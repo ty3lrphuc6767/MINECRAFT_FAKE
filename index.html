@@ -1,8 +1,8 @@
 <!doctype html>
 <html lang="vi">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>BlockCraft Survival</title>
     <link rel="stylesheet" href="styles.css">
   </head>
@@ -12,43 +12,33 @@
 
       <section id="start-screen" class="panel">
         <h1>BlockCraft Survival</h1>
-        <p>Co san spawn phang, hang sau, ore duoi dat va void o cuc sau.</p>
+        <p>Di bo, nhay, pha, dat khoi, che tao do va song sot voi mob.</p>
         <div class="panel-actions">
           <button id="start-button" type="button">Bat dau</button>
-          <button id="fly-toggle" class="secondary-button hidden" type="button">Creative Fly: OFF</button>
-          <button id="touch-toggle" class="secondary-button" type="button">Touch Mode: AUTO</button>
+          <button id="flight-toggle" class="secondary-button" type="button">Creative flight: Tat</button>
         </div>
       </section>
 
-      <div id="hud">
+      <section id="hud" aria-label="HUD">
         <div id="status">
-          <span id="mode">Survival</span>
+          <span id="mode">Paused</span>
           <span id="fps">0 FPS</span>
           <span id="count">0 blocks</span>
-          <span id="selected">Grass</span>
         </div>
-        <div id="tips">PC: WASD + chuot | Mobile/Xiaomi Pad: bam Touch Mode neu no hien PC | Joystick + vuot nhin | Pha/dat block</div>
+        <div id="tips">WASD di chuyen | Chuot nhin | Space nhay | Shift chay | E inventory | Esc pause | Click trai pha/danh | Click phai dat/an</div>
+      </section>
+
+      <div id="health-hud" aria-label="Health"></div>
+      <div id="break-hud" class="hidden"><div class="break-fill"></div></div>
+
+      <div id="mob-info" class="mob-info hidden">
+        <div class="mob-name"></div>
+        <div class="mob-kind"></div>
+        <div class="mob-health"><span></span></div>
       </div>
 
       <div id="crosshair" aria-hidden="true"></div>
-
-      <div id="hotbar" aria-label="Chon block"></div>
-
-      <div id="mobile-controls" aria-label="Dieu khien mobile">
-        <div id="mobile-look" aria-hidden="true"></div>
-        <div id="mobile-joystick" aria-label="Di chuyen">
-          <div id="mobile-stick"></div>
-        </div>
-        <div id="mobile-actions">
-          <button class="mobile-btn small" data-mobile-action="pause" type="button">MENU</button>
-          <button class="mobile-btn small" data-mobile-action="inventory" type="button">INV</button>
-          <button class="mobile-btn small" data-mobile-action="sprint" type="button">RUN</button>
-          <button class="mobile-btn" data-mobile-action="break" type="button">PHA</button>
-          <button class="mobile-btn" data-mobile-action="place" type="button">DAT</button>
-          <button class="mobile-btn" data-mobile-action="jump" type="button">UP</button>
-          <button class="mobile-btn small" data-mobile-action="down" type="button">DOWN</button>
-        </div>
-      </div>
+      <div id="hotbar" aria-label="Hotbar"></div>
 
       <section id="inventory" class="inventory hidden" aria-label="Inventory">
         <div class="inventory-panel">
@@ -56,16 +46,48 @@
             <h2>Inventory</h2>
             <button id="inventory-close" type="button">Dong</button>
           </div>
-          <div id="inventory-grid"></div>
+
+          <div class="inventory-body">
+            <section class="inventory-section">
+              <div class="inventory-section-title">Do dang co</div>
+              <div id="inventory-grid"></div>
+            </section>
+
+            <section class="crafting-panel">
+              <div class="inventory-section-title">Che tao</div>
+              <div id="recipe-grid"></div>
+              <div id="crafting-output" class="crafting-output">
+                <div class="swatch"></div>
+                <div class="recipe-result">Chon cong thuc</div>
+                <div class="recipe-cost">Can nguyen lieu</div>
+              </div>
+              <button id="craft-button" class="craft-button" type="button" disabled>Che tao</button>
+            </section>
+          </div>
         </div>
       </section>
+
+      <div id="mobile-controls" aria-hidden="true">
+        <div id="mobile-look"></div>
+        <div id="mobile-joystick">
+          <div id="mobile-stick"></div>
+        </div>
+        <div id="mobile-actions">
+          <button class="mobile-btn small" type="button" data-mobile-action="inventory">Tui</button>
+          <button class="mobile-btn small" type="button" data-mobile-action="jump">Nhay</button>
+          <button class="mobile-btn small" type="button" data-mobile-action="run">Chay</button>
+          <button class="mobile-btn" type="button" data-mobile-action="break">Pha</button>
+          <button class="mobile-btn" type="button" data-mobile-action="place">Dat</button>
+          <button class="mobile-btn" type="button" data-mobile-action="eat">An</button>
+        </div>
+      </div>
     </main>
 
     <script>
       (() => {
         const startScreen = document.querySelector("#start-screen");
         const startButton = document.querySelector("#start-button");
-        const version = "20260529-1";
+        const version = "20260530-3";
 
         function loadScript(src, done) {
           const script = document.createElement("script");
@@ -76,9 +98,10 @@
         }
 
         function showError() {
-          startScreen.querySelector("p").textContent = "Khong tai duoc Three.js. Kiem tra mang hoac file vendor/three.min.js.";
+          startScreen.querySelector("p").textContent =
+            "Khong tai duoc Three.js hoac app.js. Kiem tra file vendor/three.min.js va app.js.";
           startButton.disabled = true;
-          startButton.textContent = "Loi Three.js";
+          startButton.textContent = "Loi file";
         }
 
         loadScript(`./vendor/three.min.js?v=${version}`, () => {
@@ -94,8 +117,9 @@
               loadScript(`./app.js?v=${version}`, (ok) => {
                 if (!ok) showError();
               });
+            } else {
+              showError();
             }
-            else showError();
           });
         });
       })();
