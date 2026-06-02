@@ -167,9 +167,13 @@
     { type: "carrot", name: "Carrot", heal: 3, swatch: "linear-gradient(135deg, #f28a27, #5ca333)" },
     { type: "rotten_flesh", name: "Rotten Flesh", heal: 2, swatch: "linear-gradient(135deg, #6c7d39, #3d4923)" },
   ];
+  const specialCatalog = [
+    { type: "totem", name: "Totem", kind: "special", swatch: "linear-gradient(135deg, #ffe875 0 24%, #49b86a 24% 56%, #d4912f 56% 100%)" },
+  ];
   const itemCatalog = [
     ...inventoryBlocks.map((block) => ({ ...block, kind: "block", heal: 0 })),
     ...foodCatalog.map((food) => ({ ...food, kind: "food" })),
+    ...specialCatalog,
   ];
   const itemByType = new Map(itemCatalog.map((item) => [item.type, item]));
   const recipes = [
@@ -228,6 +232,16 @@
         { type: "stone", count: 1 },
       ],
     },
+    {
+      id: "totem",
+      label: "Totem cuu mang",
+      output: "totem",
+      count: 1,
+      inputs: [
+        { type: "diamond", count: 1 },
+        { type: "gold", count: 1 },
+      ],
+    },
   ];
   const recipeById = new Map(recipes.map((recipe) => [recipe.id, recipe]));
   const breakTimes = {
@@ -254,9 +268,9 @@
     netherrack: 0.55,
     quartz: 1.1,
   };
-    const mobCatalog = {
+  const mobCatalog = {
     zombie: { name: "Zombie", hostile: true, health: 20, speed: 2.1, damage: 3, attackRange: 1.35, attackCooldown: 900, color: 0x3e9b58, accent: 0x2d4d2f, height: 1.95, width: 0.72, drop: "rotten_flesh", dropCount: [1, 2] },
-    skeleton: { name: "Skeleton", hostile: true, ranged: true, health: 20, speed: 1.75, damage: 3, attackRange: 14, attackCooldown: 1500, color: 0xd8d8cc, accent: 0x777777, height: 1.95, width: 0.64, drop: null, dropCount: [0, 0] },
+    skeleton: { name: "Skeleton", hostile: true, ranged: true, health: 14, speed: 1.25, damage: 1, attackRange: 9, attackCooldown: 2600, color: 0xd8d8cc, accent: 0x777777, height: 1.95, width: 0.64, drop: null, dropCount: [0, 0] },
     spider: { name: "Spider", hostile: true, health: 16, speed: 2.8, damage: 2, attackRange: 1.45, attackCooldown: 700, color: 0x2b2327, accent: 0x8b1f27, height: 0.75, width: 1.2, drop: null, dropCount: [0, 0] },
     creeper: { name: "Creeper", hostile: true, explosive: true, health: 20, speed: 2.05, damage: 9, attackRange: 2.15, attackCooldown: 1200, color: 0x55b84f, accent: 0x1c6b2f, height: 1.8, width: 0.72, drop: null, dropCount: [0, 0] },
     cow: { name: "Cow", hostile: false, health: 10, speed: 1.15, color: 0x7b5236, accent: 0xf0eee2, height: 1.35, width: 0.95, drop: "beef", dropCount: [1, 3] },
@@ -434,7 +448,7 @@
     event.stopPropagation();
     creativeFly = !creativeFly;
     syncUiState();
-  });
+      });
   if (touchToggle) {
     touchToggle.addEventListener("click", (event) => {
       event.stopPropagation();
@@ -559,7 +573,7 @@
         event.preventDefault();
         event.stopPropagation();
         button.setPointerCapture(event.pointerId);
-                handleMobileAction(button.dataset.mobileAction, true);
+        handleMobileAction(button.dataset.mobileAction, true);
         button.classList.add("active");
       });
 
@@ -882,7 +896,7 @@
     mobilePaused = false;
     if (!isMobile) lockPointer();
     syncUiState();
-  }
+      }
 
   function lockPointer() {
     if (canvas.requestPointerLock) canvas.requestPointerLock();
@@ -1098,7 +1112,7 @@
     }
 
     const topY = y + treeHeight - 1;
-        for (let dx = -2; dx <= 2; dx += 1) {
+    for (let dx = -2; dx <= 2; dx += 1) {
       for (let dy = -2; dy <= 2; dy += 1) {
         for (let dz = -2; dz <= 2; dz += 1) {
           const distance = Math.abs(dx) + Math.abs(dz) + Math.max(0, dy) * 0.85;
@@ -1334,7 +1348,7 @@
     const item = itemByType.get(selectedType);
     if (item?.kind === "food") {
       eatSelectedFood(item);
-      return;
+            return;
     }
 
     placeBlock();
@@ -1548,7 +1562,7 @@
     for (const sample of samples) {
       const ground = columnTop(sample.x, sample.z, maxStepTop);
       if (ground === -Infinity || !hasBodyClearance(sample.x, sample.z, ground)) return false;
-          }
+    }
 
     return true;
   }
@@ -1784,7 +1798,7 @@
     updateViewDistance();
     updateChunkLoading(true);
   }
-
+  
   function updateViewDistance() {
     camera.far = Math.max(100, renderDistance * CHUNK_SIZE * 3.5);
     camera.updateProjectionMatrix();
@@ -1830,11 +1844,29 @@
     const now = performance.now();
     if (amount <= 0 || now < invincibleUntil || health <= 0) return;
 
-    health = Math.max(0, health - Math.round(amount));
+    const nextHealth = Math.max(0, health - Math.round(amount));
+    if (nextHealth <= 0 && activateTotem(now)) return;
+
+    health = nextHealth;
     invincibleUntil = now + 620;
     updateHealthHud();
 
     if (health <= 0) respawnAfterDeath();
+  }
+
+  function activateTotem(now) {
+    if (inventoryCount("totem") <= 0) return false;
+
+    addInventory("totem", -1);
+    health = Math.min(MAX_HEALTH, 8);
+    invincibleUntil = now + 3200;
+    fallDistance = 0;
+    player.velocity.set(0, Math.max(player.velocity.y, 2.4), 0);
+    stopBreaking();
+    updateHealthHud();
+    renderInventory();
+    renderCrafting();
+    return true;
   }
 
   function healPlayer(amount) {
@@ -2108,7 +2140,7 @@
     } else {
       if (now > mob.wanderUntil) {
         mob.wanderUntil = now + 900 + Math.random() * 1800;
-                mob.yaw += (Math.random() - 0.5) * Math.PI * 1.4;
+        mob.yaw += (Math.random() - 0.5) * Math.PI * 1.4;
       }
       target.set(Math.sin(mob.yaw), 0, Math.cos(mob.yaw));
       mob.position.addScaledVector(target, config.speed * 0.45 * dt);
@@ -2216,7 +2248,7 @@
       push.normalize();
       mob.position.addScaledVector(push, 0.55);
     }
-
+    
     if (mob.health <= 0) {
       dropMobLoot(mob);
       mob.dead = true;
