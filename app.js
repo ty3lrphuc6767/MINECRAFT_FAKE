@@ -40,17 +40,17 @@
 
   const THREE = window.THREE;
   const CHUNK_SIZE = 16;
-  const DESKTOP_RENDER_DISTANCE = 3;
+  const DESKTOP_RENDER_DISTANCE = 2;
   const MOBILE_RENDER_DISTANCE = 2;
-  const LOW_FPS_RENDER_DISTANCE = 2;
+  const LOW_FPS_RENDER_DISTANCE = 1;
   const DESKTOP_CHUNK_LOAD_BUDGET = 2;
   const MOBILE_CHUNK_LOAD_BUDGET = 1;
   const DESKTOP_CHUNK_REBUILD_BUDGET = 2;
   const MOBILE_CHUNK_REBUILD_BUDGET = 1;
-  const LOW_FPS_LIMIT = 28;
+  const LOW_FPS_LIMIT = 30;
   const RECOVER_FPS_LIMIT = 50;
   const HOTBAR_SIZE = 9;
-  const WORLD_MIN_Y = -42;
+  const WORLD_MIN_Y = -30;
   const WORLD_MAX_Y = 44;
   const VOID_Y = -66;
   const SEA_LEVEL = 3;
@@ -74,8 +74,9 @@
   const MOBILE_LOOK_SPEED = 0.006;
   const MAX_HEALTH = 20;
   const PLAYER_ATTACK_DAMAGE = 5;
-  const PLAYER_ATTACK_REACH = 3.2;
+  const PLAYER_ATTACK_REACH = 2.50;
   const PLAYER_ATTACK_COOLDOWN = 420;
+  const ONE_SHOT_SWORD_RANGE = 10;
   const MOB_SPAWN_LIMIT = 18;
   const MOB_SPAWN_INTERVAL = 1800;
   const MOB_DESPAWN_DISTANCE = 76;
@@ -169,6 +170,7 @@
   ];
   const specialCatalog = [
     { type: "totem", name: "Totem", kind: "special", swatch: "linear-gradient(135deg, #ffe875 0 24%, #49b86a 24% 56%, #d4912f 56% 100%)" },
+    { type: "one_shot_sword", name: "One Shot Sword", kind: "weapon", swatch: "linear-gradient(135deg, #f7fbff 0 18%, #51e7ff 18% 48%, #37cf71 48% 68%, #121820 68% 100%)" },
   ];
   const itemCatalog = [
     ...inventoryBlocks.map((block) => ({ ...block, kind: "block", heal: 0 })),
@@ -240,6 +242,18 @@
       inputs: [
         { type: "diamond", count: 1 },
         { type: "gold", count: 1 },
+      ],
+    },
+    {
+      id: "one_shot_sword",
+      label: "Kiem one-shot",
+      output: "one_shot_sword",
+      count: 1,
+      inputs: [
+        { type: "diamond", count: 10 },
+        { type: "coal", count: 10 },
+        { type: "emerald", count: 10 },
+        { type: "iron", count: 10 },
       ],
     },
   ];
@@ -434,7 +448,7 @@
   updateMobInfo();
   syncUiState();
   updateChunkLoading(true, SPAWN_X, SPAWN_Z);
-  rebuildDirtyChunks(9999);
+    rebuildDirtyChunks(9999);
   spawnPlayer();
   resize();
   updateCamera();
@@ -448,7 +462,7 @@
     event.stopPropagation();
     creativeFly = !creativeFly;
     syncUiState();
-      });
+  });
   if (touchToggle) {
     touchToggle.addEventListener("click", (event) => {
       event.stopPropagation();
@@ -741,6 +755,15 @@
     mobileLook = mobileControls.querySelector("#mobile-look");
     mobileJoystick = mobileControls.querySelector("#mobile-joystick");
     mobileStick = mobileControls.querySelector("#mobile-stick");
+    const mobileActionsPanel = mobileControls.querySelector("#mobile-actions");
+    if (mobileActionsPanel && !mobileActionsPanel.querySelector('[data-mobile-action="pause"]')) {
+      const menuButton = document.createElement("button");
+      menuButton.className = "mobile-btn small";
+      menuButton.dataset.mobileAction = "pause";
+      menuButton.type = "button";
+      menuButton.textContent = "MENU";
+      mobileActionsPanel.prepend(menuButton);
+    }
 
     if (!selectedLabel && countLabel?.parentElement) {
       selectedLabel = document.createElement("span");
@@ -875,7 +898,7 @@
       breakHud.id = "break-hud";
       breakHud.className = "hidden";
       breakHud.innerHTML = `<div class="break-fill"></div>`;
-      app.append(breakHud);
+            app.append(breakHud);
     }
 
     if (!mobInfo) {
@@ -896,7 +919,7 @@
     mobilePaused = false;
     if (!isMobile) lockPointer();
     syncUiState();
-      }
+  }
 
   function lockPointer() {
     if (canvas.requestPointerLock) canvas.requestPointerLock();
@@ -1325,7 +1348,7 @@
     if (!hovered) return;
     const type = removeBlock(hovered.key);
     if (type) collectBlockDrop(type);
-  }
+      }
 
   function placeBlock() {
     updateTarget(performance.now(), true);
@@ -1348,7 +1371,12 @@
     const item = itemByType.get(selectedType);
     if (item?.kind === "food") {
       eatSelectedFood(item);
-            return;
+      return;
+    }
+
+    if (item?.kind === "weapon") {
+      useOneShotSword();
+      return;
     }
 
     placeBlock();
@@ -1356,6 +1384,11 @@
 
   function startBreakOrAttack() {
     updateTarget(performance.now(), true);
+    if (selectedType === "one_shot_sword") {
+      useOneShotSword();
+      return;
+    }
+
     if (hoveredMob) {
       attackMob(hoveredMob);
       return;
@@ -1405,6 +1438,21 @@
     if (inventoryCount(item.type) <= 0 || health >= MAX_HEALTH) return;
     addInventory(item.type, -1);
     healPlayer(item.heal);
+  }
+
+  function useOneShotSword() {
+    const now = performance.now();
+    if (inventoryCount("one_shot_sword") <= 0 || now - lastAttackAt < PLAYER_ATTACK_COOLDOWN) return;
+
+    lastAttackAt = now;
+    for (const mob of [...mobs]) {
+      if (mob.dead || !mob.config.hostile) continue;
+      if (mob.position.distanceTo(player.position) <= ONE_SHOT_SWORD_RANGE) {
+        damageMob(mob, mob.health + 999);
+      }
+    }
+
+    updateMobInfo();
   }
 
   function attackMob(mob) {
@@ -1750,6 +1798,7 @@
       document.body.classList.toggle("mobile", isMobile);
       setRenderDistance(isMobile ? MOBILE_RENDER_DISTANCE : DESKTOP_RENDER_DISTANCE);
       qualityScale = isMobile ? Math.min(qualityScale, 0.85) : 1;
+            qualityScale = isMobile ? Math.min(qualityScale, 0.85) : 1;
       renderer.setPixelRatio(pixelRatioForQuality());
       resetMobileInput();
       syncUiState();
@@ -1798,7 +1847,7 @@
     updateViewDistance();
     updateChunkLoading(true);
   }
-  
+
   function updateViewDistance() {
     camera.far = Math.max(100, renderDistance * CHUNK_SIZE * 3.5);
     camera.updateProjectionMatrix();
@@ -2200,7 +2249,7 @@
       }
 
       if (mob.type === "creeper") {
-        if (parts.leftArm) parts.leftArm.visible = false;
+                if (parts.leftArm) parts.leftArm.visible = false;
         if (parts.rightArm) parts.rightArm.visible = false;
       }
       return;
@@ -2248,7 +2297,7 @@
       push.normalize();
       mob.position.addScaledVector(push, 0.55);
     }
-    
+
     if (mob.health <= 0) {
       dropMobLoot(mob);
       mob.dead = true;
