@@ -1018,3 +1018,17 @@ body #break-hud .break-fill {
     top: calc(50% - 82px);
   }
 }
+#save-status.save-ok {
+  color: #b7ffbf;
+  border-color: rgba(90, 255, 120, 0.35);
+}
+
+#save-status.save-error {
+  color: #ff9b9b;
+  border-color: rgba(255, 80, 80, 0.45);
+}
+
+#save-status.save-warning {
+  color: #ffe08a;
+  border-color: rgba(255, 212, 90, 0.5);
+}
