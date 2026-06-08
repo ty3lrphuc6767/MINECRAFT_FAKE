@@ -51,7 +51,7 @@ ensureWorldSaveMarkup();
   const LOW_FPS_LIMIT = 30;
   const RECOVER_FPS_LIMIT = 50;
   const HOTBAR_SIZE = 9;
-  const WORLD_MIN_Y = -30;
+  const WORLD_MIN_Y = -42;
   const WORLD_MAX_Y = 44;
   const VOID_Y = -66;
   const SEA_LEVEL = 3;
