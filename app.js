@@ -36,7 +36,8 @@
   }
 
   ensureInventoryMarkup();
-  ensureSurvivalMarkup();
+ensureSurvivalMarkup();
+ensureWorldSaveMarkup();
 
   const THREE = window.THREE;
   const CHUNK_SIZE = 16;
@@ -50,7 +51,7 @@
   const LOW_FPS_LIMIT = 30;
   const RECOVER_FPS_LIMIT = 50;
   const HOTBAR_SIZE = 9;
-  const WORLD_MIN_Y = -42;
+  const WORLD_MIN_Y = -30;
   const WORLD_MAX_Y = 44;
   const VOID_Y = -66;
   const SEA_LEVEL = 3;
@@ -169,9 +170,25 @@
     { type: "rotten_flesh", name: "Rotten Flesh", heal: 2, swatch: "linear-gradient(135deg, #6c7d39, #3d4923)" },
   ];
   const specialCatalog = [
-    { type: "totem", name: "Totem", kind: "special", swatch: "linear-gradient(135deg, #ffe875 0 24%, #49b86a 24% 56%, #d4912f 56% 100%)" },
-    { type: "one_shot_sword", name: "One Shot Sword", kind: "weapon", swatch: "linear-gradient(135deg, #f7fbff 0 18%, #51e7ff 18% 48%, #37cf71 48% 68%, #121820 68% 100%)" },
-  ];
+  {
+    type: "bone",
+    name: "Bone",
+    kind: "taming",
+    swatch: "linear-gradient(135deg, #fffbed 0%, #d6d0c2 55%, #8f8878 100%)"
+  },
+  {
+    type: "totem",
+    name: "Totem",
+    kind: "special",
+    swatch: "linear-gradient(135deg, #ffe875 0 24%, #49b86a 24% 56%, #d4912f 56% 100%)"
+  },
+  {
+    type: "one_shot_sword",
+    name: "One Shot Sword",
+    kind: "weapon",
+    swatch: "linear-gradient(135deg, #f7fbff 0 18%, #51e7ff 18% 48%, #37cf71 48% 68%, #121820 68% 100%)"
+  },
+];
   const itemCatalog = [
     ...inventoryBlocks.map((block) => ({ ...block, kind: "block", heal: 0 })),
     ...foodCatalog.map((food) => ({ ...food, kind: "food" })),
@@ -284,14 +301,48 @@
   };
   const mobCatalog = {
     zombie: { name: "Zombie", hostile: true, health: 20, speed: 2.1, damage: 3, attackRange: 1.35, attackCooldown: 900, color: 0x3e9b58, accent: 0x2d4d2f, height: 1.95, width: 0.72, drop: "rotten_flesh", dropCount: [1, 2] },
-    skeleton: { name: "Skeleton", hostile: true, ranged: true, health: 14, speed: 1.25, damage: 1, attackRange: 9, attackCooldown: 2600, color: 0xd8d8cc, accent: 0x777777, height: 1.95, width: 0.64, drop: null, dropCount: [0, 0] },
+    skeleton: {
+  name: "Skeleton",
+  hostile: true,
+  ranged: true,
+  health: 14,
+  speed: 1.25,
+  damage: 1,
+  attackRange: 9,
+  attackCooldown: 2600,
+  color: 0xd8d8cc,
+  accent: 0x777777,
+  height: 1.95,
+  width: 0.64,
+  drop: "bone",
+  dropCount: [1, 3]
+},
     spider: { name: "Spider", hostile: true, health: 16, speed: 2.8, damage: 2, attackRange: 1.45, attackCooldown: 700, color: 0x2b2327, accent: 0x8b1f27, height: 0.75, width: 1.2, drop: null, dropCount: [0, 0] },
     creeper: { name: "Creeper", hostile: true, explosive: true, health: 20, speed: 2.05, damage: 9, attackRange: 2.15, attackCooldown: 1200, color: 0x55b84f, accent: 0x1c6b2f, height: 1.8, width: 0.72, drop: null, dropCount: [0, 0] },
     cow: { name: "Cow", hostile: false, health: 10, speed: 1.15, color: 0x7b5236, accent: 0xf0eee2, height: 1.35, width: 0.95, drop: "beef", dropCount: [1, 3] },
     pig: { name: "Pig", hostile: false, health: 10, speed: 1.2, color: 0xf0a2b1, accent: 0xc96e80, height: 0.9, width: 0.9, drop: "porkchop", dropCount: [1, 3] },
     sheep: { name: "Sheep", hostile: false, health: 8, speed: 1.15, color: 0xeeeeee, accent: 0x6d625b, height: 1.15, width: 0.92, drop: "mutton", dropCount: [1, 2] },
     chicken: { name: "Chicken", hostile: false, health: 4, speed: 1.35, color: 0xf7f7ef, accent: 0xe8bf32, height: 0.72, width: 0.55, drop: "chicken_food", dropCount: [1, 1] },
+    wolf: {
+  name: "Wolf",
+  hostile: false,
+  tameable: true,
+  tamed: false,
+  immortal: false,
+  health: 16,
+  speed: 2.65,
+  damage: 4,
+  attackRange: 1.35,
+  attackCooldown: 650,
+  color: 0x8d8f86,
+  accent: 0xe8e6d4,
+  height: 0.9,
+  width: 0.72,
+  drop: null,
+  dropCount: [0, 0]
+},
   };
+  
 
   const faceDefs = [
     {
@@ -362,7 +413,14 @@
   const rayTargets = [];
   const mobTargets = [];
   const mobs = [];
-  const dirtyChunks = new Set();
+const tamedWolves = [];
+const dirtyChunks = new Set();
+
+const WORLD_SAVE_KEY = "blockcraft_survival_save_v1";
+const WORLD_AUTOSAVE_INTERVAL = 8000;
+
+let lastAutoSaveAt = 0;
+let lastWolfCommandAt = 0;
 
   const raycaster = new THREE.Raycaster();
   const cameraDir = new THREE.Vector3();
@@ -403,7 +461,8 @@
   let pointerLocked = false;
   let inventoryOpen = false;
   let mobilePaused = false;
-  let creativeFly = false;
+let desktopPaused = false;
+let creativeFly = false;
   let ignoreMouseUntil = 0;
   let selectedSlot = 0;
   let selectedType = null;
@@ -450,9 +509,12 @@
   updateChunkLoading(true, SPAWN_X, SPAWN_Z);
     rebuildDirtyChunks(9999);
   spawnPlayer();
-  resize();
-  updateCamera();
-  requestAnimationFrame(loop);
+loadWorldSave(false);
+updateChunkLoading(true);
+rebuildDirtyChunks(9999);
+resize();
+updateCamera();
+requestAnimationFrame(loop);
 
   startButton.addEventListener("click", startPlaying);
   canvas.addEventListener("click", () => {
@@ -540,7 +602,419 @@
   document.addEventListener("contextmenu", (event) => event.preventDefault());
   window.addEventListener("resize", resize);
   setupMobileControls();
+setupWorldSaveEvents();
+function ensureWorldSaveMarkup() {
+  let actions = startScreen.querySelector(".panel-actions");
 
+  if (!actions) {
+    actions = document.createElement("div");
+    actions.className = "panel-actions";
+    startButton.before(actions);
+    actions.append(startButton);
+  }
+    const status = document.querySelector("#status");
+
+  if (status && !document.querySelector("#save-status")) {
+    const saveStatus = document.createElement("span");
+    saveStatus.id = "save-status";
+    saveStatus.textContent = "Save: chua luu";
+    status.append(saveStatus);
+  }
+
+  if (!document.querySelector("#save-world-button")) {
+    const saveButton = document.createElement("button");
+    saveButton.id = "save-world-button";
+    saveButton.className = "secondary-button";
+    saveButton.type = "button";
+    saveButton.textContent = "Luu the gioi";
+    actions.append(saveButton);
+  }
+
+  if (!document.querySelector("#load-world-button")) {
+    const loadButton = document.createElement("button");
+    loadButton.id = "load-world-button";
+    loadButton.className = "secondary-button";
+    loadButton.type = "button";
+    loadButton.textContent = "Tai the gioi";
+    actions.append(loadButton);
+  }
+
+  if (!document.querySelector("#new-world-button")) {
+    const newWorldButton = document.createElement("button");
+    newWorldButton.id = "new-world-button";
+    newWorldButton.className = "secondary-button";
+    newWorldButton.type = "button";
+    newWorldButton.textContent = "The gioi moi";
+    actions.append(newWorldButton);
+  }
+}
+
+function setupWorldSaveEvents() {
+  const saveButton = document.querySelector("#save-world-button");
+  const loadButton = document.querySelector("#load-world-button");
+  const newWorldButton = document.querySelector("#new-world-button");
+
+  if (saveButton) {
+    saveButton.addEventListener("click", function (event) {
+      event.stopPropagation();
+      saveWorldToLocalStorage(true);
+    });
+  }
+
+  if (loadButton) {
+    loadButton.addEventListener("click", function (event) {
+      event.stopPropagation();
+
+      const ok = confirm("Tai lai the gioi da luu?");
+      if (!ok) return;
+
+      loadWorldSave(true);
+    });
+  }
+
+  if (newWorldButton) {
+    newWorldButton.addEventListener("click", function (event) {
+      event.stopPropagation();
+
+      const ok = confirm("Xoa save cu va tao the gioi moi?");
+      if (!ok) return;
+
+      localStorage.removeItem(WORLD_SAVE_KEY);
+      location.reload();
+    });
+  }
+
+  window.addEventListener("beforeunload", function () {
+    saveWorldToLocalStorage(false);
+  });
+
+  document.addEventListener("visibilitychange", function () {
+    if (document.hidden) {
+      saveWorldToLocalStorage(false);
+    }
+  });
+}
+
+function autoSaveWorld(now) {
+  if (!hasStarted) return;
+  if (now - lastAutoSaveAt < WORLD_AUTOSAVE_INTERVAL) return;
+
+  lastAutoSaveAt = now;
+
+  const rawSave = localStorage.getItem(WORLD_SAVE_KEY);
+  const oldSizeKb = rawSave ? Math.round(rawSave.length / 1024) : 0;
+
+  if (oldSizeKb > 4300) {
+    setSaveStatus("Save: gan day bo nho", "warning");
+    return;
+  }
+
+  saveWorldToLocalStorage(false);
+}
+function formatSaveTime() {
+  return new Date().toLocaleTimeString("vi-VN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit"
+  });
+}
+
+function saveWorldToLocalStorage(showMessage) {
+  try {
+    cleanTamedWolfList();
+
+    const saveData = {
+      version: 2,
+      savedAt: new Date().toISOString(),
+
+      player: {
+        x: player.position.x,
+        y: player.position.y,
+        z: player.position.z,
+        yaw: player.yaw,
+        pitch: player.pitch
+      },
+
+      health: health,
+      creativeFly: creativeFly,
+
+      inventory: Array.from(inventoryCounts.entries()),
+      hotbar: hotbarItems.slice(),
+      selectedSlot: selectedSlot,
+      selectedType: selectedType,
+
+      edits: Array.from(edits.entries()),
+
+      wolves: tamedWolves
+        .filter(function (wolf) {
+          return wolf && !wolf.dead && wolf.type === "wolf" && wolf.tamed;
+        })
+        .map(function (wolf) {
+          return {
+            x: wolf.position.x,
+            y: wolf.position.y,
+            z: wolf.position.z,
+            health: wolf.health,
+            tamed: true
+          };
+        })
+    };
+
+    const json = JSON.stringify(saveData);
+    const sizeKb = Math.round(json.length / 1024);
+
+    localStorage.setItem(WORLD_SAVE_KEY, json);
+
+    setSaveStatus(`Save: da luu ${formatSaveTime()} (${sizeKb}KB)`, "ok");
+
+    if (showMessage) {
+      alert(`Da luu the gioi. Dung luong save: ${sizeKb}KB.`);
+    }
+
+    return true;
+  } catch (error) {
+    console.error("Save world failed:", error);
+
+    const isQuotaError =
+      error &&
+      (
+        error.name === "QuotaExceededError" ||
+        error.name === "NS_ERROR_DOM_QUOTA_REACHED" ||
+        error.code === 22 ||
+        error.code === 1014
+      );
+
+    if (isQuotaError) {
+      setSaveStatus("Save: day bo nho localStorage", "error");
+
+      if (showMessage) {
+        alert(
+          "Khong luu duoc the gioi vi localStorage da day.\n" +
+          "Goi y: bam The gioi moi hoac giam bot viec pha/dat qua nhieu block."
+        );
+      }
+    } else {
+      setSaveStatus("Save: loi luu", "error");
+
+      if (showMessage) {
+        alert("Khong luu duoc the gioi.");
+      }
+    }
+
+    return false;
+  }
+}
+
+function loadWorldSave(showMessage) {
+  const rawSave = localStorage.getItem(WORLD_SAVE_KEY);
+
+  if (!rawSave) {
+    if (showMessage) alert("Chua co the gioi nao duoc luu.");
+    return false;
+  }
+
+  try {
+    const saveData = JSON.parse(rawSave);
+
+    // Load block da pha / da dat
+    edits.clear();
+
+    if (Array.isArray(saveData.edits)) {
+      saveData.edits.forEach(function (entry) {
+        if (!Array.isArray(entry) || entry.length < 2) return;
+
+        const key = entry[0];
+        const type = entry[1];
+
+        edits.set(key, type);
+      });
+    }
+
+    applySavedEditsToLoadedChunks();
+
+    // Load inventory
+    inventoryCounts.clear();
+
+    if (Array.isArray(saveData.inventory)) {
+      saveData.inventory.forEach(function (entry) {
+        if (!Array.isArray(entry) || entry.length < 2) return;
+
+        const type = entry[0];
+        const count = Number(entry[1]) || 0;
+
+        if (count > 0 && itemByType.has(type)) {
+          inventoryCounts.set(type, count);
+        }
+      });
+    }
+
+    // Load hotbar
+    hotbarItems.fill(null);
+
+    if (Array.isArray(saveData.hotbar)) {
+      for (let i = 0; i < HOTBAR_SIZE; i += 1) {
+        const type = saveData.hotbar[i];
+
+        if (type && itemByType.has(type)) {
+          hotbarItems[i] = type;
+        }
+      }
+    }
+
+    selectedSlot = THREE.MathUtils.clamp(Number(saveData.selectedSlot) || 0, 0, HOTBAR_SIZE - 1);
+    selectedType = saveData.selectedType && itemByType.has(saveData.selectedType)
+      ? saveData.selectedType
+      : hotbarItems[selectedSlot];
+
+    // Load mau + creative fly
+    health = THREE.MathUtils.clamp(Number(saveData.health) || MAX_HEALTH, 1, MAX_HEALTH);
+    creativeFly = !!saveData.creativeFly;
+
+    // Load vi tri player
+    if (saveData.player) {
+      const x = Number(saveData.player.x);
+      const y = Number(saveData.player.y);
+      const z = Number(saveData.player.z);
+
+      if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z)) {
+        player.position.set(x, y, z);
+      }
+
+      if (Number.isFinite(Number(saveData.player.yaw))) {
+        player.yaw = Number(saveData.player.yaw);
+      }
+
+      if (Number.isFinite(Number(saveData.player.pitch))) {
+        player.pitch = THREE.MathUtils.clamp(Number(saveData.player.pitch), -1.3, 1.3);
+      }
+
+      player.velocity.set(0, 0, 0);
+      player.grounded = false;
+    }
+
+    // Load chunk quanh player sau khi doi vi tri
+    updateChunkLoading(true);
+    applySavedEditsToLoadedChunks();
+    rebuildDirtyChunks(9999);
+
+    // Load cho soi da thuan hoa
+    removeLoadedTamedWolves();
+
+    if (Array.isArray(saveData.wolves)) {
+      saveData.wolves.forEach(function (wolfData) {
+        restoreSavedWolf(wolfData);
+      });
+    }
+
+    renderHotbar();
+    renderInventory();
+    renderCrafting();
+    selectHotbarSlot(selectedSlot);
+    updateHealthHud();
+    updateHud();
+    updateCamera();
+    syncUiState();
+
+    if (showMessage) {
+      alert("Da tai the gioi da luu.");
+    }
+
+    return true;
+  } catch (error) {
+    console.error("Load world failed:", error);
+setSaveStatus(`Save: da tai ${formatSaveTime()}`, "ok");
+setSaveStatus("Save: file luu bi loi", "error");
+    if (showMessage) {
+      alert("Save bi loi, khong tai duoc the gioi.");
+    }
+
+    return false;
+  }
+}
+
+function applySavedEditsToLoadedChunks() {
+  for (const [blockKey, type] of edits) {
+    const coords = parseKey(blockKey);
+    const x = coords[0];
+    const y = coords[1];
+    const z = coords[2];
+
+    const chunk = chunks.get(chunkKey(worldToChunk(x), worldToChunk(z)));
+
+    if (!chunk) continue;
+
+    if (type === null) {
+      chunk.blocks.delete(blockKey);
+      blocks.delete(blockKey);
+    } else {
+      chunk.blocks.set(blockKey, type);
+      blocks.set(blockKey, type);
+    }
+
+    markBlockAreaDirty(x, z);
+  }
+
+  updateHud();
+}
+
+function removeLoadedTamedWolves() {
+  for (let i = mobs.length - 1; i >= 0; i -= 1) {
+    const mob = mobs[i];
+
+    if (mob.type === "wolf" && mob.tamed) {
+      removeMob(mob, i);
+    }
+  }
+
+  tamedWolves.length = 0;
+}
+function cleanTamedWolfList() {
+  for (let i = tamedWolves.length - 1; i >= 0; i -= 1) {
+    const wolf = tamedWolves[i];
+
+    if (!wolf || wolf.dead || wolf.type !== "wolf" || !wolf.tamed || !mobs.includes(wolf)) {
+      tamedWolves.splice(i, 1);
+    }
+  }
+}
+function restoreSavedWolf(wolfData) {
+  if (!wolfData) return;
+
+  const x = Number(wolfData.x);
+  const savedY = Number(wolfData.y);
+  const z = Number(wolfData.z);
+
+  if (!Number.isFinite(x) || !Number.isFinite(z)) return;
+
+  let y = savedY;
+
+  if (!Number.isFinite(y)) {
+    y = groundAt(x, z, player.position.y + 3);
+  }
+
+  if (!Number.isFinite(y)) {
+    y = player.position.y - EYE_HEIGHT;
+  }
+
+  const wolf = spawnMob("wolf", x, z);
+
+  if (!wolf) return;
+
+  wolf.position.set(x, y, z);
+  wolf.mesh.position.copy(wolf.position);
+
+  tameWolf(wolf);
+
+  wolf.health = wolf.maxHealth || wolf.config.health || 16;
+  wolf.wolfTarget = null;
+  wolf.nextAttackAt = 0;
+
+  if (!tamedWolves.includes(wolf)) {
+    tamedWolves.push(wolf);
+  }
+
+  addWolfCollar(wolf);
+}
   function setupMobileControls() {
     mobileLook.addEventListener("pointerdown", (event) => {
       if (!isMobile || inventoryOpen || !hasStarted || mobilePaused || event.pointerType === "mouse") return;
@@ -915,11 +1389,16 @@
   }
 
   function startPlaying() {
-    hasStarted = true;
-    mobilePaused = false;
-    if (!isMobile) lockPointer();
-    syncUiState();
+  hasStarted = true;
+  mobilePaused = false;
+  desktopPaused = false;
+
+  if (!isMobile && document.pointerLockElement !== canvas) {
+    lockPointer();
   }
+
+  syncUiState();
+}
 
   function lockPointer() {
     if (canvas.requestPointerLock) canvas.requestPointerLock();
@@ -944,22 +1423,24 @@
   }
 
   function pauseGame() {
-    keys.clear();
-    resetMobileInput();
-    stopBreaking();
+  keys.clear();
+  resetMobileInput();
+  stopBreaking();
 
-    if (isMobile) {
-      mobilePaused = true;
-      syncUiState();
-      return;
-    }
-
-    if (document.pointerLockElement === canvas && document.exitPointerLock) {
-      document.exitPointerLock();
-    } else {
-      syncUiState();
-    }
+  if (isMobile) {
+    mobilePaused = true;
+    syncUiState();
+    return;
   }
+
+  desktopPaused = true;
+
+  if (document.pointerLockElement === canvas && document.exitPointerLock) {
+    document.exitPointerLock();
+  }
+
+  syncUiState();
+}
 
   function rotateView(dx, dy, speed) {
     player.yaw -= dx * speed;
@@ -968,7 +1449,7 @@
   }
 
   function syncUiState() {
-    const activeView = isMobile ? hasStarted && !mobilePaused : pointerLocked;
+    const activeView = isMobile ? hasStarted && !mobilePaused : hasStarted && !desktopPaused;
     playing = activeView && !inventoryOpen;
     modeLabel.textContent = inventoryOpen
       ? "Inventory"
@@ -1365,22 +1846,82 @@
   }
 
   function useSelectedItem() {
-    updateTarget(performance.now(), true);
-    if (!selectedType) return;
+  updateTarget(performance.now(), true);
+  if (!selectedType) return;
 
-    const item = itemByType.get(selectedType);
-    if (item?.kind === "food") {
-      eatSelectedFood(item);
-      return;
-    }
-
-    if (item?.kind === "weapon") {
-      useOneShotSword();
-      return;
-    }
-
-    placeBlock();
+  if (selectedType === "bone") {
+    if (tryTameWolf()) return;
   }
+
+  const item = itemByType.get(selectedType);
+
+  if (item?.kind === "food") {
+    eatSelectedFood(item);
+    return;
+  }
+
+  if (item?.kind === "weapon") {
+    useOneShotSword();
+    return;
+  }
+
+  placeBlock();
+}
+function tryTameWolf() {
+  updateTarget(performance.now(), true);
+
+  if (!hoveredMob || hoveredMob.dead || hoveredMob.type !== "wolf") return false;
+
+  if (hoveredMob.tamed) {
+    return true;
+  }
+
+  if (inventoryCount("bone") <= 0) return false;
+
+  const distance = hoveredMob.position.distanceTo(player.position);
+  if (distance > 4.2) return false;
+
+  addInventory("bone", -1);
+  tameWolf(hoveredMob);
+  return true;
+}
+
+function tameWolf(mob) {
+  mob.tamed = true;
+  mob.immortal = true;
+  mob.owner = "player";
+  mob.health = mob.config.health || 16;
+  mob.maxHealth = mob.config.health || 16;
+  mob.nextAttackAt = 0;
+
+  if (!tamedWolves.includes(mob)) {
+    tamedWolves.push(mob);
+  }
+
+  addWolfCollar(mob);
+  updateMobInfo();
+}
+
+function addWolfCollar(mob) {
+  if (!mob || !mob.mesh || mob.mesh.userData.hasCollar) return;
+
+  const collar = new THREE.Mesh(
+    mobBodyGeometry,
+    mobMaterial(0xd62828)
+  );
+
+  const width = mob.config.width || 0.72;
+  const height = mob.config.height || 0.9;
+
+  collar.name = "tamed-wolf-collar";
+  collar.scale.set(width * 0.82, 0.12, width * 0.9);
+  collar.position.set(0, height * 0.68, 0);
+  collar.userData.mob = mob;
+
+  mob.mesh.add(collar);
+  mobTargets.push(collar);
+  mob.mesh.userData.hasCollar = true;
+}
 
   function startBreakOrAttack() {
     updateTarget(performance.now(), true);
@@ -1456,15 +1997,40 @@
   }
 
   function attackMob(mob) {
-    const now = performance.now();
-    if (!mob || mob.dead || now - lastAttackAt < PLAYER_ATTACK_COOLDOWN) return;
-    if (mob.position.distanceTo(player.position) > PLAYER_ATTACK_REACH + 1) return;
+  const now = performance.now();
 
-    lastAttackAt = now;
-    damageMob(mob, PLAYER_ATTACK_DAMAGE);
+  if (!mob || mob.dead || now - lastAttackAt < PLAYER_ATTACK_COOLDOWN) return;
+
+  // Không cho tự tay đánh chó đã thuần hóa
+  if (mob.type === "wolf" && mob.tamed) {
+    return;
   }
 
+  if (mob.position.distanceTo(player.position) > PLAYER_ATTACK_REACH + 1) return;
+
+  lastAttackAt = now;
+
+  commandTamedWolvesToAttack(mob);
+  damageMob(mob, PLAYER_ATTACK_DAMAGE);
+}
+function commandTamedWolvesToAttack(target) {
+  if (!target || target.dead) return;
+  if (target.type === "wolf" && target.tamed) return;
+
+  for (const wolf of tamedWolves) {
+    if (!wolf || wolf.dead || !wolf.tamed) continue;
+
+    const distanceToPlayer = wolf.position.distanceTo(player.position);
+    const distanceToTarget = wolf.position.distanceTo(target.position);
+
+    if (distanceToPlayer > 46 && distanceToTarget > 46) continue;
+
+    wolf.wolfTarget = target;
+    wolf.nextAttackAt = Math.min(wolf.nextAttackAt || 0, performance.now() + 180);
+  }
+}
   function loop(now) {
+  try {
     const dt = Math.min((now - lastTime) / 1000, 0.05);
     lastTime = now;
 
@@ -1478,8 +2044,21 @@
     updateMobInfo();
     renderer.render(scene, camera);
     updateFps(now);
+
+    // Tạm thời KHÔNG autosave trong loop để tránh đứng game.
+    // Khi test ổn rồi mới bật lại save thủ công bằng nút "Luu the gioi".
+    // autoSaveWorld(now);
+
+  } catch (error) {
+    console.error("GAME LOOP ERROR:", error);
+
+    if (typeof setSaveStatus === "function") {
+      setSaveStatus("Game loop loi - mo Console xem dong do", "error");
+    }
+  } finally {
     requestAnimationFrame(loop);
   }
+}
 
   function updateMovement(dt) {
     if (!playing) {
@@ -1749,8 +2328,15 @@
     const config = hoveredMob.config;
     const maxHealth = Math.max(1, config.health || hoveredMob.health || 1);
     const healthPercent = THREE.MathUtils.clamp((hoveredMob.health / maxHealth) * 100, 0, 100);
-    mobInfo.querySelector(".mob-name").textContent = config.name;
-    mobInfo.querySelector(".mob-kind").textContent = config.hostile ? "Hostile mob" : "Passive mob";
+    mobInfo.querySelector(".mob-name").textContent =
+  hoveredMob.tamed && hoveredMob.type === "wolf"
+    ? "Wolf (Tamed)"
+    : config.name;
+
+mobInfo.querySelector(".mob-kind").textContent =
+  hoveredMob.tamed && hoveredMob.type === "wolf"
+    ? "Tamed companion"
+    : config.hostile ? "Hostile mob" : "Passive mob";
     mobInfo.querySelector(".mob-health span").style.width = `${healthPercent}%`;
     mobInfo.classList.remove("hidden");
   }
@@ -2113,31 +2699,142 @@
   }
 
   function updateMobs(dt, now) {
-    if (!playing) return;
-    maybeSpawnMobs(now);
+  if (!playing) return;
+  maybeSpawnMobs(now);
 
-    for (let i = mobs.length - 1; i >= 0; i -= 1) {
-      const mob = mobs[i];
-      if (mob.dead) {
-        removeMob(mob, i);
-        continue;
-      }
+  for (let i = mobs.length - 1; i >= 0; i -= 1) {
+    const mob = mobs[i];
 
-      const distanceToPlayer = mob.position.distanceTo(player.position);
-      if (distanceToPlayer > MOB_DESPAWN_DISTANCE) {
-        removeMob(mob, i);
-        continue;
-      }
+    if (mob.dead) {
+      removeMob(mob, i);
+      continue;
+    }
 
-      const beforeX = mob.position.x;
-      const beforeZ = mob.position.z;
+    const distanceToPlayer = mob.position.distanceTo(player.position);
+
+    // Chó đã thuần hóa không bị despawn khi đi xa
+    if (distanceToPlayer > MOB_DESPAWN_DISTANCE && !(mob.type === "wolf" && mob.tamed)) {
+      removeMob(mob, i);
+      continue;
+    }
+
+    const beforeX = mob.position.x;
+    const beforeZ = mob.position.z;
+
+    if (mob.type === "wolf" && mob.tamed) {
+      updateTamedWolfAi(mob, dt, now, distanceToPlayer);
+    } else {
       updateMobAi(mob, dt, now, distanceToPlayer);
-      const moving = Math.hypot(mob.position.x - beforeX, mob.position.z - beforeZ) > 0.001;
-      animateMob(mob, dt, now, moving, distanceToPlayer);
-      mob.mesh.position.copy(mob.position);
-      mob.mesh.rotation.y = mob.yaw;
+    }
+
+    const moving = Math.hypot(mob.position.x - beforeX, mob.position.z - beforeZ) > 0.001;
+
+    animateMob(mob, dt, now, moving, distanceToPlayer);
+    mob.mesh.position.copy(mob.position);
+    mob.mesh.rotation.y = mob.yaw;
+  }
+}
+function updateTamedWolfAi(wolf, dt, now, distanceToPlayer) {
+  wolf.health = wolf.maxHealth || wolf.config.health || 16;
+
+  const target = getValidWolfTarget(wolf);
+
+  if (distanceToPlayer > 32) {
+    teleportWolfNearPlayer(wolf);
+    return;
+  }
+
+  if (target) {
+    moveWolfToPoint(wolf, target.position, dt, wolf.config.speed + 1.05, 1.35);
+
+    const distanceToTarget = wolf.position.distanceTo(target.position);
+
+    if (distanceToTarget <= wolf.config.attackRange + 0.45 && now >= wolf.nextAttackAt) {
+      wolf.nextAttackAt = now + wolf.config.attackCooldown;
+      damageMob(target, wolf.config.damage || 4);
+
+      if (target.dead) {
+        wolf.wolfTarget = null;
+      }
+    }
+
+    return;
+  }
+
+  // Không có mục tiêu thì đi theo chủ
+  if (distanceToPlayer > 4.2) {
+    moveWolfToPoint(wolf, player.position, dt, wolf.config.speed + 0.6, 2.2);
+  } else {
+    wolf.wolfTarget = null;
+  }
+}
+
+function getValidWolfTarget(wolf) {
+  const target = wolf.wolfTarget;
+
+  if (!target) return null;
+  if (target.dead) return null;
+  if (!mobs.includes(target)) return null;
+  if (target === wolf) return null;
+  if (target.type === "wolf" && target.tamed) return null;
+
+  const distanceToWolf = wolf.position.distanceTo(target.position);
+  const distanceToPlayer = player.position.distanceTo(target.position);
+
+  if (distanceToWolf > 42 && distanceToPlayer > 42) return null;
+
+  return target;
+}
+
+function moveWolfToPoint(wolf, point, dt, speed, stopDistance) {
+  const direction = point.clone().sub(wolf.position);
+  direction.y = 0;
+
+  const distance = direction.length();
+
+  if (distance <= stopDistance) return;
+
+  direction.normalize();
+
+  const step = Math.min(distance - stopDistance, speed * dt);
+  const nextX = wolf.position.x + direction.x * step;
+  const nextZ = wolf.position.z + direction.z * step;
+  const nextY = groundAt(nextX, nextZ, wolf.position.y + 3);
+
+  if (Number.isFinite(nextY) && Math.abs(nextY - wolf.position.y) <= 2.6) {
+    wolf.position.x = nextX;
+    wolf.position.z = nextZ;
+    wolf.position.y = nextY;
+  } else {
+    // Nếu kẹt địa hình thì nhích nhẹ theo hướng khác cho đỡ đứng im
+    const sideStep = new THREE.Vector3(-direction.z, 0, direction.x);
+    const altX = wolf.position.x + sideStep.x * speed * dt * 0.55;
+    const altZ = wolf.position.z + sideStep.z * speed * dt * 0.55;
+    const altY = groundAt(altX, altZ, wolf.position.y + 3);
+
+    if (Number.isFinite(altY) && Math.abs(altY - wolf.position.y) <= 2.6) {
+      wolf.position.x = altX;
+      wolf.position.z = altZ;
+      wolf.position.y = altY;
     }
   }
+
+  wolf.yaw = Math.atan2(direction.x, direction.z);
+}
+
+function teleportWolfNearPlayer(wolf) {
+  const angle = Math.random() * Math.PI * 2;
+  const distance = 2.4 + Math.random() * 1.8;
+
+  const x = player.position.x + Math.cos(angle) * distance;
+  const z = player.position.z + Math.sin(angle) * distance;
+  const y = groundAt(x, z, player.position.y + 3);
+
+  if (!Number.isFinite(y)) return;
+
+  wolf.position.set(x, y, z);
+  wolf.wolfTarget = null;
+}
 
   function maybeSpawnMobs(now) {
     if (mobs.length >= MOB_SPAWN_LIMIT || now - lastMobSpawnAt < MOB_SPAWN_INTERVAL) return;
@@ -2152,7 +2849,7 @@
 
     const hostileChance = 0.46;
     const hostile = ["zombie", "skeleton", "spider", "creeper"];
-    const passive = ["cow", "pig", "sheep", "chicken"];
+    const passive = ["cow", "pig", "sheep", "chicken", "wolf"];
     const list = Math.random() < hostileChance ? hostile : passive;
     spawnMob(list[Math.floor(Math.random() * list.length)], x, z);
   }
@@ -2285,6 +2982,11 @@
   }
 
   function damageMob(mob, amount) {
+      if (mob && mob.type === "wolf" && mob.tamed) {
+    mob.health = mob.maxHealth || mob.config.health || 16;
+    if (hoveredMob === mob) updateMobInfo();
+    return;
+  }
     mob.health -= amount;
     mob.mesh.scale.setScalar(1.08);
     setTimeout(() => {
